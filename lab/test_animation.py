@@ -83,22 +83,26 @@ for s in [f() for f in physics.ALL]:
     actors = s["anim"]["actors"]
     if s["id"] == "drowning":
         bed = s["anim"]["seabed"]
+        rig_turn = rot(0, 0, math.pi / 2)                    # the swimmer rig faces the actor's +y
 
-        def bed_z(y):
-            for (ya, za), (yb, zb) in zip(bed, bed[1:]):
-                if y <= yb:
-                    return za + (zb - za) * max(0.0, (y - ya) / (yb - ya))
-            return bed[-1][1]
+        def rig_points(who, t):
+            """Body points in the actor frame. Knees and feet hang from the hip joint, so they
+            follow its rotation (crawl kick, kneeling) instead of assuming straight legs."""
+            hip_rot = rot(*interp(s["anim"]["joints"][who]["hip_L"], t)[1:])
+            pts = []
+            for name, (p, r) in BODY.items():
+                if name in ("knee", "foot"):
+                    rel = (0.0, 0.0, p[2] - 0.93)
+                    p = [(0, 0, 0.93)[i] + sum(hip_rot[i][j] * rel[j] for j in range(3)) for i in range(3)]
+                pts.append((name, [sum(rig_turn[i][j] * p[j] for j in range(3)) for i in range(3)], r))
+            return pts
         for who in ("you", "lifeguard"):
-            # rig body faces actor +y: body point (0, 0, h) stays (0, 0, h) in the actor frame.
-            # Legs folded back at the hips (kneeling) aren't straight below the body: skip them then.
-            hips = s["anim"]["joints"][who]["hip_L"]
-
-            def points(t):
-                folded = abs(interp(hips, t)[2]) > 0.3
-                return [(n, pr) for n, pr in BODY.items() if not (folded and n in ("knee", "foot"))]
-            worst = min((world(interp(actors[who], t), p)[2] - r - bed_z(world(interp(actors[who], t), p)[1]), t, name)
-                        for t in frames(s, 1 / 24) for name, (p, r) in points(t))
+            worst = (1e9, 0, "")
+            for t in frames(s, 1 / 24):
+                row = interp(actors[who], t)
+                for name, p, r in rig_points(who, t):
+                    x, y, z = world(row, p)
+                    worst = min(worst, (z - r - interp(bed, y)[1], t, name))
             check(worst[0] > -0.03, f"{who} never inside the seabed (lowest {worst[0]:+.3f} m: {worst[2]} at t={worst[1]:.1f})")
         caps = [c[0] for c in s["story"]["captions"]]
         check(caps == sorted(caps), "captions in time order")
@@ -107,10 +111,10 @@ for s in [f() for f in physics.ALL]:
         lowest = min((world(interp(rows, t), p)[2] - r, t, name)
                      for t in frames(s) for name, (p, r) in BODY.items())
         check(lowest[0] > -0.03, f"never below the ground (lowest {lowest[0]:+.3f} m: {lowest[2]} at t={lowest[1]:.3f})")
-    for t0, t1, r in s["story"].get("slowmo", []):
-        if r > 1:                                  # a fast-forward window needs no extra keys
+    for t0, t1, rate in s["story"].get("slowmo", []):
+        if rate > 1:                               # a fast-forward window needs no extra keys
             continue
-        keys = sum(1 for r in next(iter(actors.values())) if t0 <= r[0] <= t1)
+        keys = sum(1 for row in next(iter(actors.values())) if t0 <= row[0] <= t1)
         check(keys >= (t1 - t0) * 300, f"slow motion {t0:.2f}-{t1:.2f} s has {keys} keys (needs one per film frame)")
 
     if s["id"] == "pedestrian":

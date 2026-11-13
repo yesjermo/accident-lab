@@ -9,6 +9,7 @@ Everything on screen comes from out/scenarios.json (run `python3 lab/build.py`).
   blender -b --python blender/render_scenario.py -- all --render       # MP4s into out/
   blender -b --python blender/render_scenario.py -- fall --still 60    # one PNG frame
   blender -b --python blender/render_scenario.py -- all --glb          # web/models/*.glb for the viewer
+  blender -b --python blender/render_scenario.py -- drowning --render --from 790   # redo the end, keep 1-789
 
 Scenario ids: pedestrian, drowning, fall, electrocution, burns, all
 """
@@ -24,11 +25,14 @@ from mathutils import Euler, Matrix, Vector
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-SID = next((a for a in argv if not a.startswith("--") and not a.isdigit()), "pedestrian")
+_VALUED = {"--still", "--frames", "--from"}                                 # flags that take the next argument
+SID = next((a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] not in _VALUED)),
+           "pedestrian")
 RENDER = "--render" in argv
 MAX_FRAMES = int(argv[argv.index("--frames") + 1]) if "--frames" in argv else None
 STILL = [int(f) for f in argv[argv.index("--still") + 1].split(",")] if "--still" in argv else None   # one or a,b,c
 GLB = "--glb" in argv
+FROM = int(argv[argv.index("--from") + 1]) if "--from" in argv else 1   # re-render frames FROM..end only
 
 with open(os.path.join(ROOT, "out", "scenarios.json")) as f:
     DATA = {s["id"]: s for s in json.load(f)}
@@ -259,7 +263,7 @@ def animate_joints(rig, joints, times):
     for jname, rows in joints.items():
         o = bpy.data.objects.get(f"{rig.name}_{jname}")
         if o is None:
-            continue
+            raise KeyError(f"physics gives joint '{jname}' but the rig '{rig.name}' has no empty named {rig.name}_{jname}")
         for f, t in enumerate(times, start=1):
             o.rotation_euler = interp(rows, t)
             o.keyframe_insert("rotation_euler", frame=f)
@@ -721,18 +725,14 @@ def scene_drowning(s, times):
     x0, x1 = -45.0, 6.0                                           # the sea runs back from the cut at x = 6
 
     def bed_z(y):
-        for (ya, za), (yb, zb) in zip(bed, bed[1:]):
-            if y <= yb:
-                return za + (zb - za) * max(0.0, (y - ya) / (yb - ya))
-        return bed[-1][1]
+        return interp(bed, y)[0]
 
     beach = [(y, z) for y, z in bed if y <= 0] + [(0.0, -8.0), (bed[0][0], -8.0)]
     floor = [(y, z) for y, z in bed if y >= 0] + [(bed[-1][0], -8.0), (0.0, -8.0)]
     water_profile_mesh("beach", beach[::-1], x0, x1, clay(SAND))
     water_profile_mesh("seabed", floor[::-1], x0, x1, clay((196, 208, 204)))   # wet sand, seen through water
     deep = [(y, z) for y, z in bed if 0 < y] + [(bed[-1][0], 0.0), (0.0, 0.0)]
-    back = water_profile_mesh("sea_back", deep[::-1], x0 - 0.2, x0, clay((178, 206, 220), rough=0.95))
-    back.location.x = 0
+    water_profile_mesh("sea_back", deep[::-1], x0 - 0.2, x0, clay((178, 206, 220), rough=0.95))
     prim("plane", "sea_surface", ((x0 + x1) / 2, 80, 0.0), ((x1 - x0) / 2, 80, 1), mat=clay(SEA, rough=0.9))
     for y in range(4, 150, 7):                                    # swell lines: texture and speed from above
         prim("cube", f"swell{y}", ((x0 + x1) / 2, y + 0.5, 0.012), ((x1 - x0) / 2, 0.05, 0.004),
@@ -944,7 +944,7 @@ def build(sid):
             pass
         sc.render.image_settings.file_format = "PNG"
         n_frames = min(len(times), MAX_FRAMES or len(times))
-        for f in range(1, n_frames + 1):
+        for f in range(FROM, n_frames + 1):                        # frames before FROM are kept from a previous run
             sc.frame_set(f)
             sc.render.filepath = os.path.join(frames_dir, f"{f:04d}.png")
             bpy.ops.render.render(write_still=True)

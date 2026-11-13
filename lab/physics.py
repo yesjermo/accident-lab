@@ -417,11 +417,9 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
     t_side = t_surface + abs(x_out) / tow_speed
     t_shore = t_side + (y_bottom - 1.0) / tow_speed
     t_beach = t_shore + 7
-    t_breaths = t_beach + 8                                        # 5 rescue breaths first
-    t_cpr = t_breaths
+    t_cpr = t_beach + 8                                            # after 5 rescue breaths
     t_rosc = t_cpr + 50
     duration = t_rosc + 14
-    duration_est = duration
     submerged = t_surface - t_sub
 
     # --- oxygen: PaO2 falls while you can't breathe, SpO2 follows the dissociation curve
@@ -436,15 +434,16 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
         if t < t_beach:                                            # in-water rescue breaths while towing
             return 45 + (p_low - 45) * math.exp(-(t - t_surface - 8) / 40)
         p_b = 45 + (p_low - 45) * math.exp(-(t_beach - t_surface - 8) / 40)
-        if t < t_breaths:
+        if t < t_cpr:
             return p_b
-        return 90 + (p_b - 90) * math.exp(-(t - t_breaths) / 25)
+        return 90 + (p_b - 90) * math.exp(-(t - t_cpr) / 25)
 
     def spo2(t):
         p = pao2(t)
         return 100 / (23400 / (p ** 3 + 150 * p) + 1)               # Severinghaus
 
-    t_uncon = next(tt / 10 for tt in range(int(t_sub * 10), int(duration * 10)) if spo2(tt / 10) < 60)
+    # None when you're rescued before SpO2 falls below 60 %: you never black out
+    t_uncon = next((tt / 10 for tt in range(int(t_sub * 10), int(duration * 10)) if spo2(tt / 10) < 60), None)
 
     # --- film pacing: 12× most of the time, real time for the moments that matter
     story_speed = 12
@@ -452,7 +451,7 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
               [t_surface + 4, t_shore - 4, 30], [t_cpr, t_cpr + 7, 1]]
 
     ft_step, ft_table = 0.02, [0.0]                                # film seconds at every 20 ms of sim time
-    for i in range(int(duration_est / ft_step) + 2):
+    for i in range(int(duration / ft_step) + 2):
         tt = i * ft_step
         r = next((w[2] for w in slowmo if w[0] <= tt < w[1]), story_speed)
         ft_table.append(ft_table[-1] + ft_step / r)
@@ -554,9 +553,9 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
             u = lerp(UP, wade_u, k)
             return body((0.6, yy, bed(yy) + 0.93 * norm(u)[2] + 0.03), SEA, u)
         if t < t_arrive:                                           # dives forward and swims out with the rip
-            k = (t - t_wade) / (t_arrive - t_wade)
             e = ease((t - t_wade) / 1.5)
             z0 = bed(6.0) + 0.93 * wade_u[2] + 0.03
+            k = (t - t_wade) / max(t_arrive - t_wade, 1e-6)           # you may have gone under close in
             return body((0.6, 6.0 + (y_sub - 8.0) * k, z0 + (swim_z - z0) * e), turn(SEA, DOWN, e, SEA),
                         turn(wade_u, SEA, e, SEA))
         if t < t_dive:                                             # treading water, looking for you
@@ -591,13 +590,14 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
             yy = -0.2 - 5.0 * k
             return body((x_out, yy, bed(yy) + 0.93), turn(SHORE, SEA, ease(k * 3), (1, 0, 0)), UP)
         # kneeling at your side: 5 breaths at your head, then compressions on the chest.
-        # Hips 0.45 m up, torso leaning 35° over you: shoulders land 0.6 m (an arm) above your sternum.
-        hip = (chest_beach[0] - 0.45, chest_beach[1], bed(-4.3) + 0.45)
+        # Hips 0.51 m up, torso leaning 35° over you: each 5 cm push brings the hands onto your sternum,
+        # and the legs (62° from vertical) keep the feet on the sand even at the bottom of a push.
+        hip = (chest_beach[0] - 0.45, chest_beach[1], bed(-4.3) + 0.51)
         e = ease((t - t_beach) / 1.2)
         lean = math.radians(35)
         u_k = (math.sin(lean), 0, math.cos(lean))
         f_k = (math.cos(lean), 0, -math.sin(lean))
-        if t < t_breaths:
+        if t < t_cpr:
             bump = 0.04 * math.sin(math.tau * (t - t_beach) / 1.6)
             stand = (x_out, -5.2, bed(-5.2) + 0.93)
             target = (hip[0] + 0.05, hip[1] - 0.4, hip[2] + bump)       # at your head for the breaths
@@ -605,7 +605,7 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
             return body(lerp(stand, target, e), turn(SEA, (math.cos(lean_b), 0, -math.sin(lean_b)), e, (1, 0, 0)),
                         turn(UP, (math.sin(lean_b), 0, math.cos(lean_b)), e, UP))
         push = 0.05 * max(0.0, math.sin(math.tau * 1.85 * (t - t_cpr))) if t < t_rosc else 0.0
-        k = ease((t - t_breaths) / 1.0)
+        k = ease((t - t_cpr) / 1.0)
         return body(lerp((hip[0] + 0.05, hip[1] - 0.4, hip[2]), (hip[0], hip[1], hip[2] - push), k), f_k, u_k)
 
     def joints_you(t):
@@ -632,8 +632,10 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
             return {"shoulder_L": (0.1, 0.7 * s_, 0), "shoulder_R": (-0.1, -0.7 * s_, 0),
                     "hip_L": (0, -0.6 * s_, 0), "hip_R": (0, 0.6 * s_, 0), "neck": (0, 0, 0)}
         if t < t_arrive or t_surface <= t < t_shore:               # front crawl
+            # the kick shrinks in the shallows so the feet don't dig into the sand
+            kick = 0.3 * max(0.0, min(1.0, (-bed(lifeguard(t)[1]) - 0.3) / 0.8))
             return {"shoulder_L": (0, -math.pi + ph, 0), "shoulder_R": (0, ph, 0),
-                    "hip_L": (0, 0.3 * math.sin(3 * ph), 0), "hip_R": (0, -0.3 * math.sin(3 * ph), 0), "neck": (0, 0.3, 0)}
+                    "hip_L": (0, kick * math.sin(3 * ph), 0), "hip_R": (0, -kick * math.sin(3 * ph), 0), "neck": (0, 0.3, 0)}
         if t < t_dive:                                             # treading water
             s_ = math.sin(ph * 1.5)
             return {"shoulder_L": (1.3 + 0.2 * s_, 0, 0), "shoulder_R": (-1.3 - 0.2 * s_, 0, 0),
@@ -647,7 +649,7 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
         # kneeling: arms straight down onto your chest (52° forward of the leaning torso),
         # legs folded back so the feet reach the sand
         return {"shoulder_L": (0.12, -0.9, 0), "shoulder_R": (-0.12, -0.9, 0),
-                "hip_L": (0, 0.45, 0), "hip_R": (0, 0.45, 0), "neck": (0, 0.35, 0)}
+                "hip_L": (0, 0.47, 0), "hip_R": (0, 0.47, 0), "neck": (0, 0.35, 0)}
 
     def head_depth(t):
         x, yy, z, rx, ry, rz = you(t)
@@ -688,7 +690,8 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
             [t_sub, "You go under.", f"holding your whole head up costs {-F_head_out:.0f} N more than your lungs give"],
             [t_gasp, "The breath-hold breaks.", "an involuntary gasp pulls water into your airway"],
             [t_gasp + 6, "You sink.", f"lungs empty, water in: {F_sink:+.1f} N, down at {v_sink:.2f} m/s"],
-            [t_uncon, "You black out.", f"SpO₂ under 60% after {t_uncon - t_sub:.0f} s underwater"],
+            *([[t_uncon, "You black out.", f"SpO₂ under 60% after {t_uncon - t_sub:.0f} s underwater"]]
+              if t_uncon is not None else []),
             [t_alert, "Someone notices you're gone.", "the lifeguard rides the rip out: "
              f"{lg_speed} + {rip_speed} = {lg_speed + rip_speed:.1f} m/s"],
             [t_grab, f"Found, {depth:.1f} m down.", f"{t_grab - t_sub:.0f} s after you went under"],
@@ -734,7 +737,8 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
             ("Buoyancy after breathing out and inhaling water", F_sink, "N", "residual lungs, ~1 L of water: you sink"),
             ("Sinking speed", v_sink, "m/s", "terminal velocity: v = √(2|F| / ρC_dA)"),
             ("Time under water before rescue", submerged, "s", "brain injury starts after 4–6 min in warm water"),
-            ("Unconscious after", t_uncon - t_sub, "s", "SpO₂ below 60% (Severinghaus curve from falling PaO₂)"),
+            ("Unconscious after", t_uncon - t_sub, "s", "SpO₂ below 60% (Severinghaus curve from falling PaO₂)")
+            if t_uncon is not None else ("Unconscious", 0, "", "never: rescued before SpO₂ fell below 60%"),
             ("If you fight the rip", 0, "", outcome("fight")),
             ("If you swim parallel to the beach", 0, "", outcome("parallel")),
             ("If you float and wave", 0, "", outcome("float")),

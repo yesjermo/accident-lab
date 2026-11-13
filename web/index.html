@@ -99,6 +99,7 @@
   .track .rail { position: absolute; left: 0; right: 0; top: 16px; height: 1px; background: var(--ink); }
   .track .band { position: absolute; top: 9px; height: 15px; background: var(--accent-wash); border-left: 1px solid var(--accent);
                  border-right: 1px solid var(--accent); }
+  .track .ff { position: absolute; top: 12px; height: 9px; border: 1px dashed var(--muted); border-left: 0; border-right: 0; }
   .track .hold { position: absolute; top: 12px; height: 9px; right: 0; background: var(--paper-2); }
   .track .tick { position: absolute; top: 11px; width: 1px; height: 11px; background: var(--ink); }
   .track .done { position: absolute; left: 0; top: 15px; height: 3px; background: var(--accent); }
@@ -458,7 +459,7 @@ const BUILD = {
     ground(400, 400, C.paper, -6);
     const sand = new THREE.Shape(bed.map(([y, z]) => new THREE.Vector2(y, z)).concat([new THREE.Vector2(bed.at(-1)[0], -6), new THREE.Vector2(bed[0][0], -6)]));
     const sec = new THREE.ExtrudeGeometry(sand, { depth: 51, bevelEnabled: false });
-    sec.rotateX(Math.PI / 2); sec.rotateZ(Math.PI / 2); sec.translate(6, 0, 0);
+    sec.rotateX(Math.PI / 2); sec.rotateZ(Math.PI / 2); sec.translate(-45, 0, 0);   // x ∈ [-45, 6], cut at 6
     add(new THREE.Mesh(sec, mat(C.sand)), world, 0, 0, 0);
     ground(51, 160, C.sea, 0, -19.5, 80).material.side = THREE.DoubleSide;
     for (let y = 12; y < rip.length; y += 12) {
@@ -735,9 +736,11 @@ function renderNotes(s) {
 function renderMarks() {
   const tl = current.tl, D = tl.filmDur, pct = ft => (ft / D * 100).toFixed(3) + "%";
   let html = "";
-  for (const [a, b] of current.story.slowmo || []) {
+  const base = current.story.speed || 1;
+  for (const [a, b, r] of current.story.slowmo || []) {          // windows slower than the story's base speed
     const fa = filmAt(a), fb = filmAt(Math.min(b, current.anim.duration));
-    html += `<div class="band" style="left:${pct(fa)};width:${pct(fb - fa)}" title="slow motion"></div>`;
+    const slow = r < base;                                       // ...are slow motion; faster ones are fast-forward
+    html += `<div class="${slow ? "band" : "ff"}" style="left:${pct(fa)};width:${pct(fb - fa)}" title="${slow ? "slow motion" : `fast forward ×${r}`}"></div>`;
   }
   html += `<div class="hold" style="width:${pct(HOLD / FPS)}"></div>`;
   for (const [t, title] of current.story.captions.slice(1)) html += `<div class="tick" style="left:${pct(filmAt(t))}" title="${esc(title)}"></div>`;
