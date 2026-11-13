@@ -265,7 +265,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const DATA = window.SIM_DATA;
 const $ = id => document.getElementById(id);
-const FPS = 24, HOLD = Math.floor(1.5 * FPS);
+const FPS = 24, HOLD = Math.floor(1.5 * FPS), WHEEL_R = 0.38;
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // The film's palette (blender/render_scenario.py), so both views read as one drawing.
@@ -410,17 +410,21 @@ function suv() {
   add(new THREE.Mesh(ws, mat(C.glass, { side: THREE.DoubleSide })), car, 0, 0, 0);
   box(.06, .84, .28, mat(C.clayDark), 2.215, 0, .72, car);                         // grille
   for (const sy of [.68, -.68]) box(.08, .32, .08, mat(0xffffff), 2.17, sy, .86, car);
+  const hubs = [];
   for (const wx of [1.45, -1.45]) for (const wy of [.86, -.86]) {
-    // CylinderGeometry's axis is local Y, which is already the axle (left-right): no rotation.
-    const tyre = add(new THREE.Mesh(new THREE.CylinderGeometry(.38, .38, .26, 40), mat(C.tyre)), car, wx, wy, .38);
-    tyre.userData.hull = .38;
-    const rim = add(new THREE.Mesh(new THREE.CylinderGeometry(.25, .25, .024, 40), mat(C.clay)), car, wx, wy * 1.16, .38);
+    // Each wheel hangs on a hub on the axle so it can roll. CylinderGeometry's axis is local Y,
+    // which is already the axle (left-right): no rotation.
+    const hub = new THREE.Group(); hub.position.set(wx, wy, WHEEL_R); car.add(hub); hubs.push(hub);
+    const tyre = add(new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, .26, 40), mat(C.tyre)), hub, 0, 0, 0);
+    tyre.userData.hull = WHEEL_R;
+    const rim = add(new THREE.Mesh(new THREE.CylinderGeometry(.25, .25, .024, 40), mat(C.clay)), hub, 0, wy * .16, 0);
     rim.userData.noInk = true;
     for (let k = 0; k < 6; k++) {
       const a = k * Math.PI / 3;
-      box(.22, .02, .04, mat(C.clayDark), wx + .13 * Math.cos(a), wy * 1.175, .38 + .13 * Math.sin(a), car).rotation.y = -a;
+      box(.22, .02, .04, mat(C.clayDark), .13 * Math.cos(a), wy * .175, .13 * Math.sin(a), hub).rotation.y = -a;
     }
   }
+  extras.push({ hubs, car, x0: null });
   return car;
 }
 function streetBlock(y, n = 7) {
@@ -583,6 +587,10 @@ function apply(t, ft) {
     if (e.bodyFire) { const s = t < 3 ? 1 + t * .15 : Math.max(0, 1.45 - (t - 3) * .6);
       e.bodyFire.scale.setScalar(s * (.85 + .3 * Math.random())); e.bodyFire.visible = s > .02; }
     if (e.len) e.obj.position.y = e.y0 + ((t * 1.5) % 14);
+    if (e.hubs) {                            // rolling without slip: angle = distance travelled / radius
+      const x = e.car.position.x; e.x0 ??= sampleRows(current.anim.actors.car, 0)[1];
+      for (const h of e.hubs) h.rotation.y = (x - e.x0) / WHEEL_R;
+    }
   }
   followActor();
 }
