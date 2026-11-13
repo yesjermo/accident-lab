@@ -513,27 +513,27 @@ const BUILD = {
     return "A 120 V line sags across the garden path and you reach to push it aside. Crimson marks the current's path, hand to feet across your heart. Your neighbour stays back and cuts the power before touching you.";
   },
   burns(s) {
+    const an = s.anim;
     ground(400, 400, C.paper, -.02);
-    ground(20, 12, C.clay);
-    box(20, .2, 3.2, mat(C.clay), 0, 6, 1.6);
-    box(3, 1.1, .5, mat(C.clayDark), -5, 4.3, .25); box(3, .3, .8, mat(C.clayDark), -5, 4.9, .65);
-    const fireMat = new THREE.MeshBasicMaterial({ color: 0xe0701a, transparent: true, opacity: .55, depthWrite: false });
-    for (let i = 0; i < 5; i++) {
-      const c = new THREE.Mesh(new THREE.ConeGeometry(.3, 1.4, 10), fireMat);
-      c.rotation.x = Math.PI / 2; c.position.set(-6 + i * .6, 4.2, 1.1 + (i % 2) * .3); world.add(c);
+    ground(18, 12, C.road);
+    box(18, .2, 2.8, mat(C.clay), 0, 6, 1.4);
+    box(3, 1.1, .6, mat(C.clayDark), an.sofa[0], an.sofa[1], .3);
+    const fireMat = new THREE.MeshBasicMaterial({ color: 0xe0701a, transparent: true, opacity: .6, depthWrite: false });
+    for (let i = 0; i < 6; i++) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(.25, 1.2, 10), fireMat);
+      c.rotation.x = Math.PI / 2; c.position.set(an.sofa[0] - 1.1 + i * .45, an.sofa[1], 1.0); world.add(c);
       extras.push({ flame: c });
     }
-    const fl = new THREE.PointLight(0xffa060, 20, 14); fl.position.set(-5, 3.5, 1.6); world.add(fl);
-    extras.push({ flick: fl });
-    const smoke = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), new THREE.MeshBasicMaterial({ color: 0x8a8a88, transparent: true, opacity: .35, depthWrite: false }));
-    smoke.position.set(0, 0, 3.1); world.add(smoke);
-    const v = dummy(s.anim.burned_parts);
-    const bodyFire = new THREE.Mesh(new THREE.ConeGeometry(.35, 1.6, 10), fireMat);
-    bodyFire.rotation.x = Math.PI / 2; bodyFire.position.set(0, 0, 1.4); v.add(bodyFire);
-    extras.push({ bodyFire });
-    actors.victim = v; followName = "victim";
+    const smoke = new THREE.Group(); world.add(smoke);
+    for (let i = 0; i < 10; i++) {
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), new THREE.MeshLambertMaterial({ color: 0xcecece }));
+      p.scale.set(1.2, 1, .45); p.position.set(-8 + i * 1.7, -4 + (i * 3.7) % 9, .45); p.userData.noInk = true; smoke.add(p);
+    }
+    actors.smoke = smoke;
+    actors.you = rigActor(C.clayDark);
+    followName = "you";
     camera.position.set(3, 2.6, 8);
-    return "Clothes catch fire. Running for the first 3 s fans the flames; then <b>stop, drop and roll</b> smothers them. Burned regions turn crimson.";
+    return "Your sofa catches fire and you try to beat it out. Your sleeve catches, you run, then stop, drop and roll, and crawl to the door under the smoke. Crimson marks skin past 60 °C.";
   },
 };
 
