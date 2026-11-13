@@ -111,6 +111,20 @@ for s in [f() for f in physics.ALL]:
         lowest = min((world(interp(rows, t), p)[2] - r, t, name)
                      for t in frames(s) for name, (p, r) in BODY.items())
         check(lowest[0] > -0.03, f"never below the ground (lowest {lowest[0]:+.3f} m: {lowest[2]} at t={lowest[1]:.3f})")
+    # Euler angles near gimbal lock can swing wildly between two keys even when the poses are close:
+    # the interpolated midpoint must stay between its two keys.
+    def angle(a, b):
+        tr = sum(a[i][j] * b[i][j] for i in range(3) for j in range(3))
+        return math.acos(max(-1.0, min(1.0, (tr - 1) / 2)))
+    for who in [w for w in s["anim"]["actors"] if w in ("victim", "you", "lifeguard")]:
+        rows = s["anim"]["actors"][who]
+        worst = (0.0, 0)
+        for r0, r1 in zip(rows, rows[1:]):
+            m0, m1 = rot(*r0[4:7]), rot(*r1[4:7])
+            mid = rot(*[(a + b) / 2 for a, b in zip(r0[4:7], r1[4:7])])
+            excess = max(angle(m0, mid), angle(mid, m1)) - angle(m0, m1)
+            worst = max(worst, (excess, r0[0]))
+        check(worst[0] < 0.05, f"{who}: no rotation glitches between keys (worst {worst[0]:.3f} rad at t={worst[1]:.2f})")
     for t0, t1, rate in s["story"].get("slowmo", []):
         if rate > 1:                               # a fast-forward window needs no extra keys
             continue
