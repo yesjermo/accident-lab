@@ -103,7 +103,8 @@ for s in [f() for f in physics.ALL]:
             pts.append((name, [sum(rig_turn[i][j] * p[j] for j in range(3)) for i in range(3)], r))
         return pts
 
-    for who in [w for w in an["actors"] if w not in ("car",) and not w.startswith("swimmer")]:
+    bodies = [w for w in an["actors"] if w == "victim" or w in an.get("joints", {})]   # not cars or smoke
+    for who in bodies:
         step = 1 / 24 if an["duration"] > 60 else 1 / 600
         worst = (1e9, 0, "")
         for t in frames(s, step):
@@ -119,6 +120,20 @@ for s in [f() for f in physics.ALL]:
                               an["contact"])
                     for t in frames(s, 1 / 600) if on <= t < off)
         check(worst < 0.03, f"your hand stays on the line while the current flows (drifts {worst * 100:.1f} cm)")
+    # Euler angles near gimbal lock can swing wildly between two keys even when the poses are close:
+    # the interpolated midpoint must stay between its two keys.
+    def angle(a, b):
+        tr = sum(a[i][j] * b[i][j] for i in range(3) for j in range(3))
+        return math.acos(max(-1.0, min(1.0, (tr - 1) / 2)))
+    for who in bodies:
+        rows = an["actors"][who]
+        worst = (0.0, 0)
+        for r0, r1 in zip(rows, rows[1:]):
+            m0, m1 = rot(*r0[4:7]), rot(*r1[4:7])
+            mid = rot(*[(a + b) / 2 for a, b in zip(r0[4:7], r1[4:7])])
+            excess = max(angle(m0, mid), angle(mid, m1)) - angle(m0, m1)
+            worst = max(worst, (excess, r0[0]))
+        check(worst[0] < 0.05, f"{who}: no rotation glitches between keys (worst {worst[0]:.3f} rad at t={worst[1]:.2f})")
     caps = [c[0] for c in s["story"]["captions"]]
     check(caps == sorted(caps), "captions in time order")
     for t0, t1, rate in s["story"].get("slowmo", []):

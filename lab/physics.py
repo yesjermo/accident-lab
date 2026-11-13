@@ -290,11 +290,24 @@ def pose_from_axes(f, u):
 
 
 def unwrap(rows, cols):
-    """Keep Euler angles continuous between keys (no 2π jumps for the interpolator)."""
+    """Keep Euler angles continuous between keys so linear interpolation follows the real motion.
+    Every XYZ rotation has two Euler forms, (a, b, c) and (a + π, π − b, c + π); a body rolling through
+    side-lying passes from one to the other, and the interpolator would spin it the long way round.
+    For a rotation (three columns) pick, key by key, the form and the 2π turns nearest the previous key."""
+    def near(v, ref):
+        return v - round((v - ref) / math.tau) * math.tau
     for i in range(1, len(rows)):
-        for c in cols:
-            d = rows[i][c] - rows[i - 1][c]
-            rows[i][c] -= round(d / math.tau) * math.tau
+        prev = [rows[i - 1][c] for c in cols]
+        if len(cols) == 3:
+            a, b, c = (rows[i][k] for k in cols)
+            forms = [(a, b, c), (a + math.pi, math.pi - b, c + math.pi)]
+            best = min(([near(v, p) for v, p in zip(f, prev)] for f in forms),
+                       key=lambda f: sum(abs(v - p) for v, p in zip(f, prev)))
+            for k, v in zip(cols, best):
+                rows[i][k] = v
+        else:
+            for k, p in zip(cols, prev):
+                rows[i][k] = near(rows[i][k], p)
     return rows
 
 
