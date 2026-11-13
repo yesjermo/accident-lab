@@ -332,6 +332,32 @@ def rig_pose(hip, f, u, hip_h=0.93):
     return (hip[0] - hip_h * u[0], hip[1] - hip_h * u[1], hip[2] - hip_h * u[2], rx, ry, rz)
 
 
+def euler_matrix(rx, ry, rz):
+    """Blender XYZ Euler as a matrix: R = Rz · Ry · Rx."""
+    cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+    return [[cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+            [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+            [-sy, cy * sx, cy * cx]]
+
+
+def mat_vec(m, v):
+    return tuple(sum(m[i][j] * v[j] for j in range(3)) for i in range(3))
+
+
+# Where the rig's joints sit in its body frame (render_scenario.rig builds the same).
+RIG_JOINTS = {"shoulder_L": (0, 0.205, 1.4), "shoulder_R": (0, -0.205, 1.4), "hip_L": (0, 0.09, 0.93),
+              "hip_R": (0, -0.09, 0.93), "neck": (0, 0, 1.47)}
+RIG_HAND = (0, -0.065, -0.6)                                       # palm, from the shoulder joint (right side)
+
+
+def rig_point(pose, joint, joint_rot, local):
+    """World position of a point hanging from a rig joint (forward kinematics):
+    actor pose (x, y, z, rx, ry, rz) → body turned 90° about z → joint → its rotation → point."""
+    p_body = tuple(a + b for a, b in zip(RIG_JOINTS[joint], mat_vec(euler_matrix(*joint_rot), local)))
+    p_actor = (-p_body[1], p_body[0], p_body[2])                    # Rz(90°)
+    return tuple(c + d for c, d in zip(pose[:3], mat_vec(euler_matrix(*pose[3:]), p_actor)))
+
+
 def joint_rows(fn, ts):
     """Joint keyframes {name: [[t, rx, ry, rz], ...]} from fn(t) -> {name: (rx, ry, rz)}."""
     out = {}
@@ -945,10 +971,9 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
         if t < on:                                                 # stop and lean to reach
             k = ease((t - t_stop) / (on - t_stop))
             return rig_pose((x_stop, 0, 0.93), FWD, lerp(UP, FWD, 0.08 * k))
-        if t < off:                                                # locked on: rigid, back arching, tremor
-            k = ease((t - on) / 0.25)
-            trem = 0.012 * math.sin(math.tau * 7 * film_time(t))
-            return rig_pose((x_stop, trem, 0.93), FWD, lerp(lerp(UP, FWD, 0.08), BACK, 0.12 * k + trem))
+        if t < off:                                                # locked on: the grip holds you to the line, tremor
+            trem = 0.004 * math.sin(math.tau * 7 * film_time(t))
+            return rig_pose((x_stop, trem, 0.93), FWD, lerp(UP, FWD, 0.08))
         if t < t_down:                                             # falls back like a rod about the feet
             phi = math.pi / 2 * ((t - off) / (t_down - off)) ** 2
             u, f = (-math.sin(phi), 0, math.cos(phi)), (math.cos(phi), 0, math.sin(phi))
@@ -996,7 +1021,7 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
         if t < off:                                                # tetany: flexors win
             k = ease((t - on) / 0.2)
             tr = 0.03 * math.sin(math.tau * 7 * film_time(t))
-            return {"shoulder_R": (-0.05, hand_reach + tr, 0), "shoulder_L": (0.05 + 0.35 * k, -0.7 * k + tr, 0),
+            return {"shoulder_R": (-0.05, hand_reach + tr / 4, 0), "shoulder_L": (0.05 + 0.35 * k, -0.7 * k + tr, 0),
                     "hip_L": (0.06 * k, -0.08 * k, 0), "hip_R": (-0.06 * k, -0.08 * k, 0), "neck": (0, -0.45 * k, 0)}
         if t < t_down:                                             # arms fling up as you fall
             k = ease((t - off) / (t_down - off))
@@ -1039,6 +1064,9 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
     rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
     rows_nb = unwrap(sample(neighbour, duration, dense=dense), (4, 5, 6))
     ts = [row[0] for row in rows_you]
+    # where your palm actually is when you touch the line: the Blender line is drawn through this point
+    contact = rig_point(you(on), "shoulder_R", joints_you(on)["shoulder_R"], RIG_HAND)
+    line_end = (x_stop + 0.25, -0.55, 0.03)
 
     story = {
         "slowmo": slowmo,
@@ -1064,7 +1092,7 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
             [t_shock + 1.5, "A pulse.", "deep burns hide behind small marks: hospital, ECG, CK, urine"],
         ],
         "callouts": [
-            [0, on, None, [x_stop + 0.6, -0.22, 1.24], f"live: {voltage} V"],
+            [0, on, None, [round(c, 3) for c in contact], f"live: {voltage} V"],
             [on, off, "you", [0.2, 0, 1.24], "entry: the hand"],
             [on + 0.1, off, "you", [0, 0, 0.03], "exit: the feet"],
             [on + 0.45, t_down, "you", [0.05, 0, 1.3], "heart in the current path"],
@@ -1103,7 +1131,8 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
                  "actors": {"you": rows_you, "neighbour": rows_nb},
                  "joints": {"you": joint_rows(joints_you, ts), "neighbour": joint_rows(joints_neighbour, ts)},
                  "shock_window": [on, off], "t_aed": t_aed, "t_shock": t_shock, "t_power": t_power,
-                 "breaker": list(breaker), "x_stop": x_stop},
+                 "breaker": list(breaker), "x_stop": x_stop,
+                 "contact": [round(c, 4) for c in contact], "line_end": list(line_end)},
     }
 
 

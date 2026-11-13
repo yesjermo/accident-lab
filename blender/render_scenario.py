@@ -220,8 +220,8 @@ def dummy(name, accent_parts=(), cap=True):
     return root
 
 
-def swimmer(name, cap_rgb=ACCENT, tube=False):
-    """Crash dummy with joints (neck, shoulders, hips) for the drowning story.
+def rig(name, cap_rgb=ACCENT, tube=False):
+    """Crash dummy with joints (neck, shoulders, hips) for the stories with people who move.
     The body sits inside the actor turned 90° (it faces the actor's +y) so face-down and
     face-up poses stay clear of Euler gimbal lock; physics.pose_from_axes assumes the same."""
     root = empty(name)
@@ -258,12 +258,12 @@ def swimmer(name, cap_rgb=ACCENT, tube=False):
     return root
 
 
-def animate_joints(rig, joints, times):
-    """Keyframe the rig's joint empties from physics rows [t, rx, ry, rz]."""
+def animate_joints(person, joints, times):
+    """Keyframe a rig's joint empties from physics rows [t, rx, ry, rz]."""
     for jname, rows in joints.items():
-        o = bpy.data.objects.get(f"{rig.name}_{jname}")
+        o = bpy.data.objects.get(f"{person.name}_{jname}")
         if o is None:
-            raise KeyError(f"physics gives joint '{jname}' but the rig '{rig.name}' has no empty named {rig.name}_{jname}")
+            raise KeyError(f"physics gives joint '{jname}' but the rig '{person.name}' has no empty named {person.name}_{jname}")
         for f, t in enumerate(times, start=1):
             o.rotation_euler = interp(rows, t)
             o.keyframe_insert("rotation_euler", frame=f)
@@ -463,13 +463,18 @@ def animate_actor(obj, rows, times):
         obj.keyframe_insert("rotation_euler", frame=f)
 
 
-def animate_camera(cam, times, target_fn, offset_fn, smooth=0.12):
-    """Keyframe a camera following target_fn(t). Returns the camera matrix for every frame."""
-    mats, tgt = [], None
+def animate_camera(cam, times, target_fn, offset_fn, smooth=0.12, scale_fn=None, scale_smooth=0.08):
+    """Keyframe a camera following target_fn(t). Returns the camera matrix for every frame.
+    scale_fn(t), if given, multiplies the camera's distance from the target (smoothed): a pull-back."""
+    mats, tgt, scale = [], None, None
     for f, t in enumerate(times, start=1):
         raw = Vector(target_fn(t))
         tgt = raw if tgt is None else tgt.lerp(raw, smooth)
         pos = Vector(offset_fn(tgt))
+        if scale_fn:
+            want = scale_fn(t)
+            scale = want if scale is None else scale + (want - scale) * scale_smooth
+            pos = tgt + (pos - tgt) * scale
         m = Matrix.Translation(pos) @ (tgt - pos).to_track_quat("-Z", "Y").to_matrix().to_4x4()
         cam.matrix_world = m
         cam.keyframe_insert("location", frame=f)
@@ -753,11 +758,11 @@ def scene_drowning(s, times):
         prim("cylinder", f"flagpole{fx}", (fx, -3, bed_z(-3) + 1.2), (0.04, 0.04, 1.2), mat=clay(CLAY_DARK), vertices=10)
         prim("cube", f"flag{fx}", (fx + 0.32, -3, bed_z(-3) + 2.15), (0.3, 0.01, 0.2), mat=clay(ACCENT))
 
-    you = swimmer("you", ACCENT)
-    guard = swimmer("lifeguard", AMBER, tube=True)
-    for rig in (you, guard):
-        animate_actor(rig, an["actors"][rig.name], times)
-        animate_joints(rig, an["joints"][rig.name], times)
+    you = rig("you", ACCENT)
+    guard = rig("lifeguard", AMBER, tube=True)
+    for person in (you, guard):
+        animate_actor(person, an["actors"][person.name], times)
+        animate_joints(person, an["joints"][person.name], times)
 
     cam = make_camera(30)
     track = actor_pos(s, "you")
@@ -817,9 +822,10 @@ def scene_electrocution(s, times):
     prim("cube", "crossarm", (2.6, 1.6, 8.4), (0.08, 1.2, 0.08), mat=clay(CLAY), bevel=0.02)
     for yy in (0.6, 2.6):
         prim("cylinder", f"insulator{yy}", (2.6, yy, 8.6), (0.06, 0.06, 0.12), mat=clay(CLAY_DARK), vertices=16)
-    hand = (xs + 0.6, -0.22, 1.24)                                # where your right hand meets the line
-    end = (xs + 0.25, -0.55, 0.03)                                # the broken end, lying in the puddle
-    pts = [(2.6, 0.6, 8.6), (1.9, 0.3, 5.2), (1.0, -0.05, 2.4), hand, (xs + 0.45, -0.4, 0.6), end]
+    hand = tuple(an["contact"])                                   # your palm, from the rig's forward kinematics
+    end = tuple(an["line_end"])                                   # the broken end, lying in the puddle
+    pts = [(2.6, 0.6, 8.6), (1.9, 0.3, 5.2), (1.0, -0.05, 2.4), hand,
+           (hand[0] - 0.15, (hand[1] + end[1]) / 2, 0.6), end]
     cu = bpy.data.curves.new("wire", "CURVE")
     cu.dimensions = "3D"
     cu.bevel_depth = 0.018
@@ -849,8 +855,8 @@ def scene_electrocution(s, times):
     prim("cube", "breaker_box", (bx, by + 0.25, 1.45), (0.22, 0.06, 0.3), mat=clay(CLAY_DARK), bevel=0.01)
     prim("cube", "breaker_lever", (bx, by + 0.18, 1.5), (0.03, 0.03, 0.08), mat=clay(ACCENT))
 
-    you = swimmer("you", ACCENT)
-    nb = swimmer("neighbour", GREEN)
+    you = rig("you", ACCENT)
+    nb = rig("neighbour", GREEN)
     # the current's path, drawn on the front of your body so it shows: hand → arm → chest → hips → feet
     hot = flat(ACCENT)
     tube("current_arm", (0.05, -0.02, 0), (0.05, -0.065, -0.6), 0.016, hot, bpy.data.objects["you_shoulder_R"])
@@ -862,9 +868,9 @@ def scene_electrocution(s, times):
     prim("cube", "aed_handle", (0, 0, 0.2), (0.06, 0.015, 0.02), mat=clay(CLAY_DARK), parent=aed)
     aed.location = (xs - 2.35, 0.55, 0)                           # beside your head, clear of the CPR
 
-    for rig in (you, nb):
-        animate_actor(rig, an["actors"][rig.name], times)
-        animate_joints(rig, an["joints"][rig.name], times)
+    for person in (you, nb):
+        animate_actor(person, an["actors"][person.name], times)
+        animate_joints(person, an["joints"][person.name], times)
 
     on, off = an["shock_window"]
     t_power = an["t_power"]
@@ -878,22 +884,9 @@ def scene_electrocution(s, times):
         return (p.x, p.y, p.z + (0.9 if t < off else 0.4))
 
     # follow you; pull back for the wide shot while the target sits between you and your neighbour
-    mats = []
-    tgt = None
-    for f, t in enumerate(times, start=1):
-        raw = Vector(target(t))
-        tgt = raw if tgt is None else tgt.lerp(raw, 0.15)
-        wide = 1.0 if off + 1.0 <= t < t_power + 1.0 else 0.0
-        dist = Vector((3.8, -5.0, 1.0)) * (1.0 + 1.6 * wide)
-        if f == 1:
-            d_s = dist
-        d_s = d_s.lerp(dist, 0.08)
-        pos = tgt + d_s
-        m = Matrix.Translation(pos) @ (tgt - pos).to_track_quat("-Z", "Y").to_matrix().to_4x4()
-        cam.matrix_world = m
-        cam.keyframe_insert("location", frame=f)
-        cam.keyframe_insert("rotation_euler", frame=f)
-        mats.append(m.copy())
+    wide = lambda t: 2.6 if off + 1.0 <= t < t_power + 1.0 else 1.0
+    mats = animate_camera(cam, times, target, lambda g: (g.x + 3.8, g.y - 5.0, g.z + 1.0), smooth=0.15,
+                          scale_fn=wide)
     return cam, mats
 
 

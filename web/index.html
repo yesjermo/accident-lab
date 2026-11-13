@@ -497,7 +497,8 @@ const BUILD = {
     const puddle = new THREE.Mesh(new THREE.CircleGeometry(1.5, 48), mat(C.sea));
     puddle.scale.set(1, .66, 1); puddle.position.set(xs + .1, -.2, .004); puddle.receiveShadow = true; puddle.userData.noInk = true; world.add(puddle);
     cyl(.14, 9, mat(C.clayDark), 2.6, 1.6, 4.5, world, false);
-    const pts = [[2.6, .6, 8.6], [1.9, .3, 5.2], [1.0, -.05, 2.4], [xs + .6, -.22, 1.24], [xs + .45, -.4, .6], [xs + .25, -.55, .03]]
+    const c = an.contact, e = an.line_end;
+    const pts = [[2.6, .6, 8.6], [1.9, .3, 5.2], [1.0, -.05, 2.4], c, [c[0] - .15, (c[1] + e[1]) / 2, .6], e]
       .map(p => new THREE.Vector3(...p));
     const wire = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, .018, 6), mat(C.ink));
     wire.userData.noInk = true; world.add(wire);

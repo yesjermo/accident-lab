@@ -112,6 +112,13 @@ for s in [f() for f in physics.ALL]:
                 x, y, z = world(row, p)
                 worst = min(worst, (z - r - ground_z(y), t, name))
         check(worst[0] > -0.03, f"{who} never below the ground (lowest {worst[0]:+.3f} m: {worst[2]} at t={worst[1]:.2f})")
+    if s["id"] == "electrocution":
+        on, off = an["shock_window"]
+        worst = max(math.dist(physics.rig_point(interp(an["actors"]["you"], t)[1:], "shoulder_R",
+                                                interp(an["joints"]["you"]["shoulder_R"], t)[1:], physics.RIG_HAND),
+                              an["contact"])
+                    for t in frames(s, 1 / 600) if on <= t < off)
+        check(worst < 0.03, f"your hand stays on the line while the current flows (drifts {worst * 100:.1f} cm)")
     caps = [c[0] for c in s["story"]["captions"]]
     check(caps == sorted(caps), "captions in time order")
     for t0, t1, rate in s["story"].get("slowmo", []):
