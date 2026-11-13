@@ -391,3 +391,73 @@ Every scenario below lands in the same primary survey, done in this order becaus
 - **Split-thickness skin graft**: A dermatome harvests a thin sheet of healthy skin. It is often meshed to expand it and stapled over the excised wound. The donor site heals like a graze.
 - **When there isn't enough skin**: Cadaver allograft, dermal substitutes, or lab-cultured skin (CEA) as temporary or permanent cover.
 - **Reconstruction**: Months later: contracture release, Z-plasty, laser for scars, physiotherapy and pressure garments.
+
+## Choking
+
+### Assumptions
+
+- `lung_volume_frc_L` = 2.4
+- `trachea_area_cm2` = 2.5
+- `food_grip_N` = 3.5
+- `thrust_volumes_L` = [0.18, 0.22, 0.26, 0.32, 0.36]
+
+### Physics and engineering
+
+| Quantity | Value | How |
+|---|---|---|
+| Airway cross-section | **2.50 cm²** | adult trachea ~18 mm across |
+| Pressure from a back blow | **3.00 kPa** | a short spike from the blow to the chest wall |
+| Force on the food from a back blow | **0.75 N** | F = ΔP·A |
+| Thrust 1: pressure | **8.21 kPa** | Boyle, ΔV = 0.18 L from FRC 2.4 L |
+| Thrust 2: pressure | **10.22 kPa** | Boyle, ΔV = 0.22 L from FRC 2.4 L |
+| Thrust 3: pressure | **12.31 kPa** | Boyle, ΔV = 0.26 L from FRC 2.4 L |
+| Thrust 4: pressure | **15.58 kPa** | Boyle, ΔV = 0.32 L from FRC 2.4 L |
+| Force that frees it | **3.90 N** | thrust 4: ΔP·A beats the 3.5 N grip |
+| Speed the food leaves at | **1.99 m/s** | (F − F_grip) over ~5 cm on a 10 g piece |
+| Time without air | **13.87 s** | unconscious after ~1–2 min of complete obstruction |
+| SpO₂ at the lowest | **94.66 %** | Severinghaus curve, falling PaO₂ |
+
+**Each thrust**
+
+| Thrust | ΔV (L) | ΔP (kPa) | Force (N) | Frees it? |
+|---|---|---|---|---|
+| 1 | 0.18 | 8.2 | 2.05 | no |
+| 2 | 0.22 | 10.2 | 2.56 | no |
+| 3 | 0.26 | 12.3 | 3.08 | no |
+| 4 | 0.32 | 15.6 | 3.9 | yes |
+| 5 | 0.36 | 17.9 | 4.47 | yes |
+
+### How the body gets hurt
+
+- Food is pulled into the airway with a sudden breath in: laughing, talking or gasping while eating. Large, firm pieces (meat, hot dogs, grapes, nuts in children) wedge at the larynx, the narrowest point.
+- Complete obstruction: no air in or out. You can't speak, cough or breathe, and you go blue. Partial obstruction: you can still cough and make sounds.
+- With no air moving, oxygen in the lungs and blood runs down: unconscious in about 1–2 minutes, then the heart stops from lack of oxygen.
+- Risk factors: alcohol, dentures, dementia, stroke or Parkinson's (poor swallowing), and young children (small airways).
+
+### Prevention
+
+- Cut food small, chew it well, and don't talk or laugh with your mouth full.
+- Children under 5: quarter grapes and cherry tomatoes lengthways, no whole nuts or hard sweets, and sit them down to eat.
+- Older adults with swallowing problems: a speech and language assessment and texture-modified food.
+- Learn back blows, abdominal thrusts and CPR: most choking happens in front of family or friends.
+
+### Urgent help (bystander)
+
+1. Ask “Are you choking?”. If they can cough, encourage coughing and stay with them.
+2. If they can't cough, speak or breathe: up to 5 back blows. Lean them forward, support the chest, and strike between the shoulder blades with the heel of your hand.
+3. Then up to 5 abdominal thrusts: stand behind, a fist just above the navel, pull sharply in and up. Alternate 5 and 5.
+4. Pregnant or very large: chest thrusts instead. Infants under 1: 5 back blows face-down along your forearm, then 5 chest thrusts with two fingers; never abdominal thrusts.
+5. If they become unresponsive: lower them to the floor, call 911, and start CPR. Compressions also push air against the blockage.
+6. Anyone given abdominal thrusts should see a doctor: thrusts can injure the stomach, liver or spleen.
+
+### In the emergency department
+
+- Still obstructed: direct laryngoscopy, and the object is pulled out with Magill forceps.
+- Pieces that went past the larynx: chest X-ray (many foods don't show), then bronchoscopy.
+- After abdominal thrusts: check the abdomen for injury; after a long obstruction, look for aspiration pneumonia and hypoxic brain injury.
+
+### The surgeon's view
+
+- **Rigid bronchoscopy**: Under general anaesthetic a metal tube is passed through the mouth into the windpipe; forceps or a basket retrieve the food from the bronchus while the patient is ventilated through the scope.
+- **Emergency cricothyrotomy**: When nothing can be seen or removed and oxygen can't be delivered: a cut through the cricothyroid membrane just below the Adam's apple, and a tube into the windpipe below the blockage.
+- **Tracheostomy**: If the larynx is badly swollen or injured, a planned opening lower in the neck for a longer-term airway.
