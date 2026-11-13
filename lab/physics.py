@@ -370,7 +370,14 @@ def mat_vec(m, v):
 # Where the rig's joints sit in its body frame (render_scenario.rig builds the same).
 RIG_JOINTS = {"shoulder_L": (0, 0.205, 1.4), "shoulder_R": (0, -0.205, 1.4), "hip_L": (0, 0.09, 0.93),
               "hip_R": (0, -0.09, 0.93), "neck": (0, 0, 1.47)}
-RIG_HAND = (0, -0.065, -0.6)                                       # palm, from the shoulder joint (right side)
+RIG_ELBOW = (0, -0.045, -0.3)                                      # right elbow, from the shoulder joint
+RIG_PALM = (0, -0.02, -0.3)                                        # right palm, from the elbow joint
+
+
+def rig_hand(pose, shoulder_rot, elbow_rot=(0, 0, 0)):
+    """World position of the right palm: shoulder joint → upper arm → elbow joint → forearm (forward kinematics)."""
+    local = tuple(a + b for a, b in zip(RIG_ELBOW, mat_vec(euler_matrix(*elbow_rot), RIG_PALM)))
+    return rig_point(pose, "shoulder_R", shoulder_rot, local)
 
 
 def rig_point(pose, joint, joint_rot, local):
@@ -1088,7 +1095,7 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
     rows_nb = unwrap(sample(neighbour, duration, dense=dense), (4, 5, 6))
     ts = [row[0] for row in rows_you]
     # where your palm actually is when you touch the line: the Blender line is drawn through this point
-    contact = rig_point(you(on), "shoulder_R", joints_you(on)["shoulder_R"], RIG_HAND)
+    contact = rig_hand(you(on), joints_you(on)["shoulder_R"], joints_you(on).get("elbow_R", (0, 0, 0)))
     line_end = (x_stop + 0.25, -0.55, 0.03)
 
     story = {
@@ -1580,7 +1587,7 @@ def choking(frc_l=2.4, trachea_cm2=2.5, hold_n=3.5, thrust_dv_l=(0.18, 0.22, 0.2
             return (larynx[0], larynx[1], larynx[2] + shake, 0, 0, 0)
         tt = t - t_out                                             # out, fast, then falls
         v = math.sqrt(2 * (forces[n_out] - hold_n) * 0.05 / 0.01)  # F − F_hold over 5 cm on a 10 g piece
-        return (larynx[0], larynx[1] + 0.8 * v * tt, max(0.76, larynx[2] + 0.6 * v * tt - 0.5 * G * tt ** 2), 0, 0, 0)
+        return (larynx[0], larynx[1] + 0.8 * v * tt, max(0.03, larynx[2] + 0.6 * v * tt - 0.5 * G * tt ** 2), 0, 0, 0)
 
     dense = slowmo + [[t_blows - 0.2, t_out + 1.0, 1]]
     rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
