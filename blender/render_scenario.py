@@ -798,15 +798,28 @@ def scene_fall(s, times):
     return cam, mats
 
 
+def tube(name, a, b, r, mat, parent=None):
+    """A thin cylinder from a to b (in the parent's space)."""
+    a, b = Vector(a), Vector(b)
+    o = prim("cylinder", name, tuple((a + b) / 2), (r, r, (b - a).length / 2),
+             rot=tuple((b - a).to_track_quat("Z", "Y").to_euler()), mat=mat, parent=parent, vertices=10)
+    return o
+
+
 def scene_electrocution(s, times):
-    prim("plane", "ground", (0, 0, 0), (30, 30, 1), mat=clay(ROAD))
-    prim("cylinder", "puddle", (-0.3, 0, 0.004), (1.4, 1.0, 0.002), mat=clay((190, 204, 214), rough=0.05), vertices=48)
+    """You reach for a sagging 120 V line; current runs hand → chest → feet; your neighbour cuts the power."""
+    an = s["anim"]
+    xs = an["x_stop"]
+    prim("plane", "ground", (-4, 0, 0), (30, 30, 1), mat=clay((222, 226, 214)))
+    prim("plane", "path", (-4, 0, 0.003), (14, 0.7, 1), mat=clay(ROAD))
+    prim("cylinder", "puddle", (xs + 0.1, -0.2, 0.006), (1.5, 1.0, 0.002), mat=clay((190, 204, 214), rough=0.05), vertices=48)
     prim("cylinder", "pole", (2.6, 1.6, 4.5), (0.14, 0.14, 4.5), mat=clay(CLAY), vertices=24)
     prim("cube", "crossarm", (2.6, 1.6, 8.4), (0.08, 1.2, 0.08), mat=clay(CLAY), bevel=0.02)
     for yy in (0.6, 2.6):
         prim("cylinder", f"insulator{yy}", (2.6, yy, 8.6), (0.06, 0.06, 0.12), mat=clay(CLAY_DARK), vertices=16)
-    hand = (-0.3, 0.27, 0.85)
-    pts = [(2.6, 0.6, 8.6), (1.8, 0.5, 6.0), (0.6, 0.35, 2.4), hand]
+    hand = (xs + 0.6, -0.22, 1.24)                                # where your right hand meets the line
+    end = (xs + 0.25, -0.55, 0.03)                                # the broken end, lying in the puddle
+    pts = [(2.6, 0.6, 8.6), (1.9, 0.3, 5.2), (1.0, -0.05, 2.4), hand, (xs + 0.45, -0.4, 0.6), end]
     cu = bpy.data.curves.new("wire", "CURVE")
     cu.dimensions = "3D"
     cu.bevel_depth = 0.018
@@ -819,15 +832,68 @@ def scene_electrocution(s, times):
     wire = bpy.data.objects.new("wire", cu)
     bpy.context.view_layer.active_layer_collection.collection.objects.link(wire)
     cu.materials.append(clay((60, 60, 66)))
-    prim("ico_sphere", "spark", hand, (0.09,) * 3, mat=flat((150, 205, 255)), subdivisions=1)
+    spark = flat((150, 205, 255))
+    prim("ico_sphere", "spark", hand, (0.07,) * 3, mat=spark, subdivisions=1)
+    prim("ico_sphere", "spark_end", end, (0.06,) * 3, mat=spark, subdivisions=1)
     for k in range(8):
         a = k * math.tau / 8
-        prim("cone", f"bolt{k}", (hand[0] + 0.12 * math.cos(a), hand[1], hand[2] + 0.12 * math.sin(a)),
-             (0.025, 0.025, 0.12), rot=(0, math.pi / 2 - a, 0), mat=flat((150, 205, 255)), vertices=4)
-    v = dummy("victim")
-    animate_actor(v, s["anim"]["actors"]["victim"], times)
+        prim("cone", f"bolt{k}", (hand[0] + 0.11 * math.cos(a), hand[1], hand[2] + 0.11 * math.sin(a)),
+             (0.022, 0.022, 0.1), rot=(0, math.pi / 2 - a, 0), mat=spark, vertices=4)
+    # step-voltage ring: 10 m round the line's end
+    prim("torus", "ring_step", (end[0], end[1], 0.02), (1, 1, 1), mat=flat(AMBER), major_radius=10.0,
+         minor_radius=0.035, major_segments=96, minor_segments=6)
+    # the house wall and the breaker box
+    bx, by = an["breaker"]
+    prim("cube", "house_wall", (bx, by + 0.45, 1.6), (6.0, 0.15, 1.6), mat=clay(CLAY), bevel=0.02)
+    prim("cube", "house_window", (bx + 3.0, by + 0.29, 1.7), (0.8, 0.02, 0.55), mat=clay(GLASS, rough=0.1))
+    prim("cube", "breaker_box", (bx, by + 0.25, 1.45), (0.22, 0.06, 0.3), mat=clay(CLAY_DARK), bevel=0.01)
+    prim("cube", "breaker_lever", (bx, by + 0.18, 1.5), (0.03, 0.03, 0.08), mat=clay(ACCENT))
+
+    you = swimmer("you", ACCENT)
+    nb = swimmer("neighbour", GREEN)
+    # the current's path, drawn on the front of your body so it shows: hand → arm → chest → hips → feet
+    hot = flat(ACCENT)
+    tube("current_arm", (0.05, -0.02, 0), (0.05, -0.065, -0.6), 0.016, hot, bpy.data.objects["you_shoulder_R"])
+    tube("current_torso", (0.12, -0.2, 1.4), (0.12, 0.0, 0.95), 0.018, hot, bpy.data.objects["you_body"])
+    for side in ("L", "R"):
+        tube(f"current_leg{side}", (0.075, 0, 0), (0.09, 0, -0.88), 0.016, hot, bpy.data.objects[f"you_hip_{side}"])
+    aed = empty("aed")
+    prim("cube", "aed_case", (0, 0, 0.09), (0.16, 0.12, 0.09), mat=clay(GREEN), parent=aed, bevel=0.02)
+    prim("cube", "aed_handle", (0, 0, 0.2), (0.06, 0.015, 0.02), mat=clay(CLAY_DARK), parent=aed)
+    aed.location = (xs - 2.35, 0.55, 0)                           # beside your head, clear of the CPR
+
+    for rig in (you, nb):
+        animate_actor(rig, an["actors"][rig.name], times)
+        animate_joints(rig, an["joints"][rig.name], times)
+
+    on, off = an["shock_window"]
+    t_power = an["t_power"]
     cam = make_camera(30)
-    mats = animate_camera(cam, times, lambda t: (0.1, 0.4, 0.55), lambda g: (g.x + 4.2, g.y - 5.2, 2.1), smooth=1)
+    track_you, track_nb = actor_pos(s, "you"), actor_pos(s, "neighbour")
+
+    def target(t):
+        p = track_you(t)
+        if off + 1.0 <= t < t_power + 1.0:                          # wide: you on the ground, your neighbour at the box
+            return tuple((p + track_nb(t)) / 2 + Vector((0, 0, 0.8)))
+        return (p.x, p.y, p.z + (0.9 if t < off else 0.4))
+
+    # follow you; pull back for the wide shot while the target sits between you and your neighbour
+    mats = []
+    tgt = None
+    for f, t in enumerate(times, start=1):
+        raw = Vector(target(t))
+        tgt = raw if tgt is None else tgt.lerp(raw, 0.15)
+        wide = 1.0 if off + 1.0 <= t < t_power + 1.0 else 0.0
+        dist = Vector((3.8, -5.0, 1.0)) * (1.0 + 1.6 * wide)
+        if f == 1:
+            d_s = dist
+        d_s = d_s.lerp(dist, 0.08)
+        pos = tgt + d_s
+        m = Matrix.Translation(pos) @ (tgt - pos).to_track_quat("-Z", "Y").to_matrix().to_4x4()
+        cam.matrix_world = m
+        cam.keyframe_insert("location", frame=f)
+        cam.keyframe_insert("rotation_euler", frame=f)
+        mats.append(m.copy())
     return cam, mats
 
 
@@ -872,8 +938,20 @@ def scene_extras(sid):
     """Per-frame effects that aren't plain transforms (sparks, flames)."""
     objs = bpy.data.objects
     if sid == "electrocution":
-        fx = [o for o in objs if o.name.startswith(("spark", "bolt"))]
-        return lambda fi, t: [show(o, 2.0 <= t < 4.5 and fi % 3 != 0) for o in fx]
+        an = DATA[sid]["anim"]
+        on, off = an["shock_window"]
+        pulse = [o for o in objs if o.name.startswith(("spark", "bolt", "current"))]
+        ring = [o for o in objs if o.name.startswith("ring")]
+        aed = [o for o in objs if o.name.startswith("aed_")]
+
+        def upd(fi, t):
+            for o in pulse:                                        # the current pulses while you're on the line
+                show(o, on <= t < off and fi % 3 != 0)
+            for o in ring:
+                show(o, off + 1.0 <= t < an["t_power"])
+            for o in aed:
+                show(o, t >= an["t_aed"])
+        return upd
     if sid == "burns":
         fl = [o for o in objs if o.get("flame")]
 
@@ -962,7 +1040,8 @@ def export_glb(sid, sc, world_coll, times, extra):
     Animation time 0 = film frame 1, so the viewer drives it with video.currentTime.
     Effects the frame handler makes (sparks blinking, flames flickering) are baked
     into scale keys, because glTF has no visibility channel."""
-    fx = [o for o in world_coll.all_objects if o.name.startswith(("spark", "bolt")) or o.get("flame")]
+    fx = [o for o in world_coll.all_objects
+          if o.name.startswith(("spark", "bolt", "current", "ring", "aed_")) or o.get("flame")]
     if extra and fx:
         base = {o.name: tuple(o.scale) for o in fx}
         for f in range(1, len(times) + 1):

@@ -81,36 +81,39 @@ def frames(s, step=1 / 600):
 for s in [f() for f in physics.ALL]:
     print(s["id"])
     actors = s["anim"]["actors"]
-    if s["id"] == "drowning":
-        bed = s["anim"]["seabed"]
-        rig_turn = rot(0, 0, math.pi / 2)                    # the swimmer rig faces the actor's +y
+    an = s["anim"]
+    ground = an.get("seabed")                                # drowning has a seabed; elsewhere the ground is z = 0
 
-        def rig_points(who, t):
-            """Body points in the actor frame. Knees and feet hang from the hip joint, so they
-            follow its rotation (crawl kick, kneeling) instead of assuming straight legs."""
-            hip_rot = rot(*interp(s["anim"]["joints"][who]["hip_L"], t)[1:])
-            pts = []
-            for name, (p, r) in BODY.items():
-                if name in ("knee", "foot"):
-                    rel = (0.0, 0.0, p[2] - 0.93)
-                    p = [(0, 0, 0.93)[i] + sum(hip_rot[i][j] * rel[j] for j in range(3)) for i in range(3)]
-                pts.append((name, [sum(rig_turn[i][j] * p[j] for j in range(3)) for i in range(3)], r))
-            return pts
-        for who in ("you", "lifeguard"):
-            worst = (1e9, 0, "")
-            for t in frames(s, 1 / 24):
-                row = interp(actors[who], t)
-                for name, p, r in rig_points(who, t):
-                    x, y, z = world(row, p)
-                    worst = min(worst, (z - r - interp(bed, y)[1], t, name))
-            check(worst[0] > -0.03, f"{who} never inside the seabed (lowest {worst[0]:+.3f} m: {worst[2]} at t={worst[1]:.1f})")
-        caps = [c[0] for c in s["story"]["captions"]]
-        check(caps == sorted(caps), "captions in time order")
-    else:
-        rows = actors["victim"]
-        lowest = min((world(interp(rows, t), p)[2] - r, t, name)
-                     for t in frames(s) for name, (p, r) in BODY.items())
-        check(lowest[0] > -0.03, f"never below the ground (lowest {lowest[0]:+.3f} m: {lowest[2]} at t={lowest[1]:.3f})")
+    def ground_z(y):
+        return interp(ground, y)[1] if ground else 0.0
+    rig_turn = rot(0, 0, math.pi / 2)                        # jointed rigs face the actor's +y
+
+    def body_points(who, t):
+        """Body points in the actor frame. On a jointed rig, knees and feet hang from the hip
+        joint and follow its rotation (steps, kicks, kneeling) instead of assuming straight legs."""
+        joints = an.get("joints", {}).get(who)
+        if not joints:
+            return [(n, p, r) for n, (p, r) in BODY.items()]
+        hip_rot = rot(*interp(joints["hip_L"], t)[1:])
+        pts = []
+        for name, (p, r) in BODY.items():
+            if name in ("knee", "foot"):
+                rel = (0.0, 0.0, p[2] - 0.93)
+                p = [(0, 0, 0.93)[i] + sum(hip_rot[i][j] * rel[j] for j in range(3)) for i in range(3)]
+            pts.append((name, [sum(rig_turn[i][j] * p[j] for j in range(3)) for i in range(3)], r))
+        return pts
+
+    for who in [w for w in an["actors"] if w not in ("car",) and not w.startswith("swimmer")]:
+        step = 1 / 24 if an["duration"] > 60 else 1 / 600
+        worst = (1e9, 0, "")
+        for t in frames(s, step):
+            row = interp(an["actors"][who], t)
+            for name, p, r in body_points(who, t):
+                x, y, z = world(row, p)
+                worst = min(worst, (z - r - ground_z(y), t, name))
+        check(worst[0] > -0.03, f"{who} never below the ground (lowest {worst[0]:+.3f} m: {worst[2]} at t={worst[1]:.2f})")
+    caps = [c[0] for c in s["story"]["captions"]]
+    check(caps == sorted(caps), "captions in time order")
     for t0, t1, rate in s["story"].get("slowmo", []):
         if rate > 1:                               # a fast-forward window needs no extra keys
             continue

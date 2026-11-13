@@ -275,7 +275,7 @@ def pedestrian(speed_kmh=50, car_mass=1500, ped_mass=75, mu_brake=0.8,
 
 
 # ---------------------------------------------------------------------------
-# 2. Drowning in a rip current
+# Jointed rig: poses from where the face and head point
 # ---------------------------------------------------------------------------
 def pose_from_axes(f, u):
     """Blender XYZ Euler for the swimmer rig, from where the face (f) and the head (u) point.
@@ -306,6 +306,55 @@ def norm(v):
 def lerp(a, b, k):
     k = max(0.0, min(1.0, k))
     return tuple(x + (y - x) * k for x, y in zip(a, b))
+
+
+def ease(k):
+    """Smoothstep 0 → 1."""
+    k = max(0.0, min(1.0, k))
+    return k * k * (3 - 2 * k)
+
+
+def turn(a, b, k, via):
+    """Direction part-way from a to b; goes through `via` so opposite directions never cancel."""
+    k = max(0.0, min(1.0, k))
+    if sum(x * y for x, y in zip(norm(a), norm(b))) < -0.9:
+        return norm(lerp(a, via, 2 * k)) if k < 0.5 else norm(lerp(via, b, 2 * k - 1))
+    return norm(lerp(a, b, k))
+
+
+def rig_pose(hip, f, u, hip_h=0.93):
+    """Actor row (feet origin + Euler) for the jointed rig, from the hip position and where the
+    face (f) and head (u) point. The face is squared to the spine first."""
+    u = norm(u)
+    d = sum(x * y for x, y in zip(f, u))
+    f = norm(tuple(x - d * y for x, y in zip(f, u)))
+    rx, ry, rz = pose_from_axes(f, u)
+    return (hip[0] - hip_h * u[0], hip[1] - hip_h * u[1], hip[2] - hip_h * u[2], rx, ry, rz)
+
+
+def joint_rows(fn, ts):
+    """Joint keyframes {name: [[t, rx, ry, rz], ...]} from fn(t) -> {name: (rx, ry, rz)}."""
+    out = {}
+    for t in ts:
+        for name, r in fn(t).items():
+            out.setdefault(name, []).append([t] + [round(c, 4) for c in r])
+    return {k: unwrap(v, (1, 2, 3)) for k, v in out.items()}
+
+
+def film_clock(slowmo, base, duration, step=0.02):
+    """film_time(t): seconds of film that sim time t lands on, given the story's speeds.
+    Periodic motion (strokes, steps, tremor) is phased on film time so it never aliases."""
+    table = [0.0]
+    for i in range(int(duration / step) + 2):
+        tt = i * step
+        r = next((w[2] for w in slowmo if w[0] <= tt < w[1]), base)
+        table.append(table[-1] + step / r)
+
+    def film_time(t):
+        x = max(0.0, t) / step
+        i = min(int(x), len(table) - 2)
+        return table[i] + (table[i + 1] - table[i]) * (x - i)
+    return film_time
 
 
 # ---------------------------------------------------------------------------
@@ -450,46 +499,21 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
     slowmo = [[t_tired + 4, t_tired + 10, 1], [t_gasp - 2, t_gasp + 4, 1],
               [t_surface + 4, t_shore - 4, 30], [t_cpr, t_cpr + 7, 1]]
 
-    ft_step, ft_table = 0.02, [0.0]                                # film seconds at every 20 ms of sim time
-    for i in range(int(duration / ft_step) + 2):
-        tt = i * ft_step
-        r = next((w[2] for w in slowmo if w[0] <= tt < w[1]), story_speed)
-        ft_table.append(ft_table[-1] + ft_step / r)
-
-    def film_time(t):
-        x = max(0.0, t) / ft_step
-        i = min(int(x), len(ft_table) - 2)
-        return ft_table[i] + (ft_table[i + 1] - ft_table[i]) * (x - i)
+    film_time = film_clock(slowmo, story_speed, duration)
 
     # --- poses ---------------------------------------------------------------
     UP, SHORE, SEA, DOWN = (0, 0, 1), (0, -1, 0), (0, 1, 0), (0, 0, -1)
     LEFT = (-1, 0, 0)                                              # along the beach, out of the rip
 
-    def turn(a, b, k, via):
-        """Direction part-way from a to b; goes through `via` so opposite directions never cancel."""
-        k = max(0.0, min(1.0, k))
-        if sum(x * y for x, y in zip(norm(a), norm(b))) < -0.9:
-            return norm(lerp(a, via, 2 * k)) if k < 0.5 else norm(lerp(via, b, 2 * k - 1))
-        return norm(lerp(a, b, k))
+    body = rig_pose
 
     def pitch(theta):
         """Upright and facing the sea at 0; head toward the sea at π/2; head down at π."""
         return (0, math.cos(theta), -math.sin(theta)), (0, math.sin(theta), math.cos(theta))
 
-    def body(hip, f, u, hip_h=0.93):
-        u = norm(u)
-        d = sum(x * y for x, y in zip(f, u))
-        f = norm(tuple(x - d * y for x, y in zip(f, u)))           # make the face square to the spine
-        rx, ry, rz = pose_from_axes(f, u)
-        return (hip[0] - hip_h * u[0], hip[1] - hip_h * u[1], hip[2] - hip_h * u[2], rx, ry, rz)
-
     def lying_z(y, u):
         """Hip height for a body lying flat: clear of the seabed under the hips and the head."""
         return max(bed(y), bed(y + 0.75 * u[1])) + 0.15
-
-    def ease(k):
-        k = max(0.0, min(1.0, k))
-        return k * k * (3 - 2 * k)
 
     f_idr, swim_z, idr_z = norm(lerp(SHORE, UP, 0.15)), -0.12, -0.66
 
@@ -661,14 +685,6 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
     rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
     rows_lg = unwrap(sample(lifeguard, duration, dense=dense), (4, 5, 6))
 
-    def joint_rows(fn):
-        ts = sorted({r[0] for r in rows_you})
-        out = {}
-        for tt in ts:
-            for name, rot in fn(tt).items():
-                out.setdefault(name, []).append([tt] + [round(c, 4) for c in rot])
-        return {k: unwrap(v, (1, 2, 3)) for k, v in out.items()}
-
     story = {
         "speed": story_speed,
         "slowmo": slowmo,
@@ -753,7 +769,8 @@ def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
                      ["> 30 min", "Survival rare, except in ice-cold water (hypothermia protects the brain)"]]}},
         "anim": {"fps": FPS, "duration": duration,
                  "actors": {"you": rows_you, "lifeguard": rows_lg},
-                 "joints": {"you": joint_rows(joints_you), "lifeguard": joint_rows(joints_lifeguard)},
+                 "joints": {"you": joint_rows(joints_you, [r[0] for r in rows_you]),
+                            "lifeguard": joint_rows(joints_lifeguard, [r[0] for r in rows_you])},
                  "seabed": seabed, "tower": list(tower),
                  "rip": {"half_width": rip_half_width, "length": rip_length}},
     }
@@ -866,10 +883,13 @@ def fall(height=6.0, mass=70):
 # ---------------------------------------------------------------------------
 # 4. Electrocution
 # ---------------------------------------------------------------------------
-def electrocution(voltage=120, condition="wet", contact_s=1.0):
+def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
+    """You reach to push a sagging 120 V service line off the garden path.
+    x = along the path (you walk +x), y = across it, z = up. Origin: where the line's end lies."""
     resist = {"dry": 100_000, "wet": 1_000, "broken skin": 500}
     r = resist[condition]
     i = voltage / r
+    i_ma = i * 1000
     heat = i ** 2 * r * contact_s
 
     def effect(mA):
@@ -888,64 +908,202 @@ def electrocution(voltage=120, condition="wet", contact_s=1.0):
             I = V / R * 1000
             rows.append([V, cond, R, round(I, 1), effect(I)])
 
-    duration = 6.0
+    # Step potential: current leaving the line's end spreads into wet soil (ρ ≈ 100 Ω·m).
+    # The voltage between your feet falls off as 1/r, so stay 10 m away.
+    rho_soil, i_ground, stride = 100.0, 5.0, 0.8
 
-    def victim(t):
-        if t < 2.0:
-            return (-1.5 + 0.6 * t, 0, 0, 0, 0, 0)
-        if t < 4.5:   # tetanic shaking, locked on
-            j = 0.03 * math.sin(t * 90)
-            return (-0.3 + j, j, 0, j, 0, 0)
-        tt = min(1.0, (t - 4.5) / 0.4)
-        return (-0.3 - 0.6 * tt, 0, BODY_HALF_THICKNESS * tt, 0, -math.pi / 2 * tt, 0)
+    def step_v(dist):
+        return rho_soil * i_ground / (2 * math.pi) * (1 / dist - 1 / (dist + stride))
 
-    on, off = 2.0, 4.5
-    i_ma = i * 1000
+    # --- timeline (real seconds) ----------------------------------------------
+    walk_v, x_stop = 1.2, -0.6
+    t_stop = 1.9
+    x_start = x_stop - walk_v * t_stop
+    on = 2.4
+    off = on + contact_s
+    t_down = off + 0.75                                            # a rigid body falls in ~0.7 s
+    t_breaker_walk, breaker = off + 1.4, (-11.0, 4.0)
+    t_power = 40.0                                                 # main breaker off
+    t_kneel = t_power + 4.0
+    t_cpr = t_kneel + 1.0
+    t_aed = 52.0
+    t_shock = 116.5
+    t_rosc = t_shock + 4.0
+    duration = t_rosc + 8.0
+    slowmo = [[on - 0.1, on + 0.5, 1 / 6], [off + 1.6, t_power - 1.0, 10], [t_power - 1.0, t_power + 6, 2],
+              [t_power + 6, t_shock - 3.5, 20], [t_shock + 1.5, duration, 2.5]]
+    film_time = film_clock(slowmo, 1, duration)
+
+    UP, FWD, BACK = (0, 0, 1), (1, 0, 0), (-1, 0, 0)
+    hand_reach = -1.3                                               # right shoulder angle on the wire
+
+    def you(t):
+        if t < t_stop:                                             # walking along the path
+            x = x_start + walk_v * t
+            bob = 0.02 * abs(math.sin(math.tau * 0.9 * film_time(t)))
+            return rig_pose((x, 0, 0.93 + bob), FWD, UP)
+        if t < on:                                                 # stop and lean to reach
+            k = ease((t - t_stop) / (on - t_stop))
+            return rig_pose((x_stop, 0, 0.93), FWD, lerp(UP, FWD, 0.08 * k))
+        if t < off:                                                # locked on: rigid, back arching, tremor
+            k = ease((t - on) / 0.25)
+            trem = 0.012 * math.sin(math.tau * 7 * film_time(t))
+            return rig_pose((x_stop, trem, 0.93), FWD, lerp(lerp(UP, FWD, 0.08), BACK, 0.12 * k + trem))
+        if t < t_down:                                             # falls back like a rod about the feet
+            phi = math.pi / 2 * ((t - off) / (t_down - off)) ** 2
+            u, f = (-math.sin(phi), 0, math.cos(phi)), (math.cos(phi), 0, math.sin(phi))
+            lift = BODY_HALF_THICKNESS * (phi / (math.pi / 2))
+            return rig_pose((x_stop + 0.93 * u[0], 0, lift + 0.93 * u[2]), f, u)
+        jolt = 0.04 * max(0.0, 1 - abs(t - t_shock) / 0.12)          # the AED shock
+        return rig_pose((x_stop - 0.93, 0, BODY_HALF_THICKNESS + jolt), UP, BACK)
+
+    chest = (x_stop - 0.93 - 0.32, 0.0)
+
+    def neighbour(t):
+        home = (breaker[0] + 2.5, breaker[1] - 1.0)
+        if t < off:                                                # weeding by the house, facing you
+            return rig_pose((home[0], home[1], 0.93), norm((chest[0] - home[0], -home[1], 0)), UP)
+        if t < t_breaker_walk:                                     # turns, shouts
+            return rig_pose((home[0], home[1], 0.93), norm((x_stop - home[0], -home[1], 0)), UP)
+        if t < t_breaker_walk + 4:                                 # to the breaker box on the wall
+            k = ease((t - t_breaker_walk) / 4)
+            p = lerp(home, (breaker[0], breaker[1] - 0.6), k)
+            return rig_pose((p[0], p[1], 0.93), turn(norm((x_stop - home[0], -home[1], 0)), (0, 1, 0), k, BACK), UP)
+        if t < t_power + 0.5:                                      # at the box, phone at the ear
+            return rig_pose((breaker[0], breaker[1] - 0.6, 0.93), (0, 1, 0), UP)
+        if t < t_kneel:                                            # power off: runs to you
+            k = ease((t - t_power - 0.5) / (t_kneel - t_power - 0.5))
+            p = lerp((breaker[0], breaker[1] - 0.6), (chest[0], 0.75), k)
+            return rig_pose((p[0], p[1], 0.93), turn((0, 1, 0), (0, -1, 0), k, (1, 0, 0)), UP)
+        lean = math.radians(35)                                    # kneeling at your left side
+        u_k, f_k = (0, -math.sin(lean), math.cos(lean)), (0, -math.cos(lean), -math.sin(lean))
+        e = ease((t - t_kneel) / 1.0)
+        push = 0.05 * max(0.0, math.sin(math.tau * 1.85 * (t - t_cpr))) if t_cpr <= t < t_shock - 2 else 0.0
+        clear = 0.25 * ease((t - (t_shock - 2)) / 0.5) * (1 - ease((t - t_shock - 0.5) / 0.6))
+        hip = (chest[0], 0.45 + clear, 0.51 - push + 0.1 * clear)
+        return rig_pose(lerp((chest[0], 0.75, 0.93), hip, e), turn((0, -1, 0), f_k, e, UP), lerp(UP, u_k, e))
+
+    def joints_you(t):
+        ph = math.tau * 0.9 * film_time(t)
+        if t < t_stop:                                             # walking: arms and legs swing
+            sw = 0.4 * math.sin(ph)
+            return {"shoulder_L": (0.05, -sw, 0), "shoulder_R": (-0.05, sw, 0),
+                    "hip_L": (0, sw, 0), "hip_R": (0, -sw, 0), "neck": (0, 0.1, 0)}
+        if t < on:                                                 # reaching for the line
+            k = ease((t - t_stop) / (on - t_stop))
+            return {"shoulder_L": (0.05, 0, 0), "shoulder_R": (-0.05, hand_reach * k, 0),
+                    "hip_L": (0, 0, 0), "hip_R": (0, 0, 0), "neck": (0, 0.15, 0)}
+        if t < off:                                                # tetany: flexors win
+            k = ease((t - on) / 0.2)
+            tr = 0.03 * math.sin(math.tau * 7 * film_time(t))
+            return {"shoulder_R": (-0.05, hand_reach + tr, 0), "shoulder_L": (0.05 + 0.35 * k, -0.7 * k + tr, 0),
+                    "hip_L": (0.06 * k, -0.08 * k, 0), "hip_R": (-0.06 * k, -0.08 * k, 0), "neck": (0, -0.45 * k, 0)}
+        if t < t_down:                                             # arms fling up as you fall
+            k = ease((t - off) / (t_down - off))
+            return {"shoulder_R": (-0.05 - 0.6 * k, hand_reach - 1.0 * k, 0), "shoulder_L": (0.4 + 0.5 * k, -0.7 - 0.9 * k, 0),
+                    "hip_L": (0.06 + 0.1 * k, -0.08, 0), "hip_R": (-0.06 - 0.1 * k, -0.08, 0), "neck": (0, -0.45 + 0.3 * k, 0)}
+        tw = 0.25 * max(0.0, 1 - abs(t - t_shock) / 0.15)            # the shock makes every muscle twitch
+        return {"shoulder_R": (-0.9 - tw, -0.4, 0), "shoulder_L": (0.9 + tw, -0.4, 0),
+                "hip_L": (0.16 + tw / 3, 0, 0), "hip_R": (-0.16 - tw / 3, 0, 0), "neck": (0, 0, 0)}
+
+    def joints_neighbour(t):
+        ph = math.tau * 0.9 * film_time(t)
+        if t < off:
+            return {"shoulder_L": (0.05, -0.6, 0), "shoulder_R": (-0.05, -0.6, 0),
+                    "hip_L": (0, -0.5, 0), "hip_R": (0, -0.5, 0), "neck": (0, 0.4, 0)}
+        if t < t_breaker_walk:                                     # "Don't touch it!"
+            return {"shoulder_L": (0.05, -1.4, 0), "shoulder_R": (-0.05, -1.4, 0),
+                    "hip_L": (0, 0, 0), "hip_R": (0, 0, 0), "neck": (0, 0, 0)}
+        if t < t_breaker_walk + 4 or t_power + 0.5 <= t < t_kneel:  # walking / running
+            sw = 0.5 * math.sin(ph * 1.3)
+            return {"shoulder_L": (0.05, -sw, 0), "shoulder_R": (-0.05, sw, 0),
+                    "hip_L": (0, sw, 0), "hip_R": (0, -sw, 0), "neck": (0, 0, 0)}
+        if t < t_power + 0.5:                                      # one hand on the switch, phone at the ear
+            return {"shoulder_L": (0.3, -2.6, 0), "shoulder_R": (-0.05, -1.7, 0),
+                    "hip_L": (0, 0, 0), "hip_R": (0, 0, 0), "neck": (0, 0.1, 0)}
+        hands_off = ease((t - (t_shock - 2)) / 0.5) * (1 - ease((t - t_shock - 0.5) / 0.6))
+        return {"shoulder_L": (0.12 + 0.5 * hands_off, -0.9 + 0.6 * hands_off, 0),
+                "shoulder_R": (-0.12 - 0.5 * hands_off, -0.9 + 0.6 * hands_off, 0),
+                "hip_L": (0, 0.47, 0), "hip_R": (0, 0.47, 0), "neck": (0, 0.35, 0)}
+
+    def cardiac_output(t):
+        if t < on + 0.3:
+            return 5.0
+        if t < t_cpr:
+            return 0.0                                             # VF: the heart quivers, pumps nothing
+        if t < t_shock:
+            return 1.4                                             # good CPR: ~25–30% of normal
+        return 1.4 + (4.5 - 1.4) * ease((t - t_shock) / 4)
+
+    dense = [w for w in slowmo if w[2] <= 1] + [[on - 0.2, t_down + 0.2, 1], [t_shock - 0.4, t_shock + 0.4, 1]]
+    rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
+    rows_nb = unwrap(sample(neighbour, duration, dense=dense), (4, 5, 6))
+    ts = [row[0] for row in rows_you]
+
     story = {
-        "slowmo": [[1.9, 2.3, 1 / 4]],
+        "slowmo": slowmo,
         "series": {
-            "I": series(lambda t: i_ma if on <= t < off else 0.0, duration, breaks=[on, off]),
-            "Q": series(lambda t: i ** 2 * r * min(max(0.0, t - on), off - on), duration, breaks=[on, off]),
+            "I": series(lambda t: i_ma if on <= t < off else 0.0, duration, dt=1 / 60, breaks=[on, off]),
+            "CO": series(cardiac_output, duration, dt=1 / 20, breaks=[on + 0.3, t_cpr, t_shock]),
         },
-        "hud": [{"sym": "I", "series": "I", "unit": "mA", "fmt": "{:.0f}", "note": "current through the chest"},
-                {"sym": "Q", "series": "Q", "unit": "J", "fmt": "{:.1f}"}],
+        "hud": [{"sym": "I", "series": "I", "unit": "mA", "fmt": "{:.0f}", "note": "current through your chest"},
+                {"sym": "CO", "series": "CO", "unit": "L/min", "fmt": "{:.1f}"}],
         "captions": [
-            [0, "A downed line. Wet ground.", f"{voltage} V  ·  {condition} skin is about {r:,} Ω"],
-            [on, f"{i_ma:.0f} mA through the chest.", "Ohm's law: I = V / R"],
-            [on + 0.4, "The grip locks.", "AC above ~15 mA clamps the flexor muscles: can't let go"],
-            [on + 1.0, "Ventricular fibrillation.", "100 mA+ across the heart: it quivers, no pulse"],
-            [off, "Collapse.", "don't touch them: cut the power, then CPR and an AED"],
+            [0, "A line is down across the path.", f"{voltage} V service line  ·  {condition} skin ≈ {r:,} Ω"],
+            [t_stop, "You reach to push it aside.", "never touch a fallen line: assume it's live"],
+            [on, f"{i_ma:.0f} mA through your chest.", "I = V / R: hand to feet, right across the heart"],
+            [on + 0.15, "Your grip locks.", "AC above ~15 mA: the forearm flexors beat the extensors"],
+            [on + 0.45, "Your heart fibrillates.", "100 mA+ across the heart: it quivers and pumps nothing"],
+            [off, "You fall free.", "the collapse pulls your hand off the wire"],
+            [off + 1.0, "Your neighbour doesn't touch you.", f"a step across wet soil 1 m from the line: {step_v(1):.0f} V"],
+            [t_breaker_walk + 1, "They go for the main breaker.", "and call 911 on the way"],
+            [t_power, "Power off. Now it's safe to touch you.", "never before: you'd become part of the circuit"],
+            [t_kneel, "CPR.", "30 compressions : 2 breaths, 5–6 cm deep, 100–120 a minute"],
+            [t_aed, "The AED arrives.", "pads on, follow the voice"],
+            [t_shock - 2, "Shock advised. Stand clear.", "one jolt stops the fibrillation"],
+            [t_shock + 1.5, "A pulse.", "deep burns hide behind small marks: hospital, ECG, CK, urine"],
         ],
         "callouts": [
-            [on, off, "victim", [0, 0.27, 0.83], "entry wound"],
-            [on + 0.2, off, "victim", [0, -0.1, 0.03], "exit wound"],
-            [on + 1.0, off + 1.0, "victim", [0, 0, 1.3], "heart in the current path"],
+            [0, on, None, [x_stop + 0.6, -0.22, 1.24], f"live: {voltage} V"],
+            [on, off, "you", [0.2, 0, 1.24], "entry: the hand"],
+            [on + 0.1, off, "you", [0, 0, 0.03], "exit: the feet"],
+            [on + 0.45, t_down, "you", [0.05, 0, 1.3], "heart in the current path"],
+            [off + 1.0, t_power, None, [-6.5, 2.0, 0], f"10 m: step voltage {step_v(10):.1f} V"],
+            [t_shock - 2, t_shock + 3, "neighbour", [0, 0, 1.6], "stand clear"],
         ],
         "graphs": [
-            {"title": "current (mA)", "lines": [["I", "body", "accent"]],
+            {"title": "current through you (mA)", "lines": [["I", "you", "accent"]],
              "refs": [[15, "let-go limit"], [100, "VF"]]},
-            {"title": "heat deposited (J)", "lines": [["Q", "Q = I²Rt", "accent"]]},
+            {"title": "heart output (L/min)", "lines": [["CO", "you", "accent"]],
+             "refs": [[5, "normal"], [1.4, "CPR"]]},
         ],
-        "eqs": [f"I = V/R = {voltage} / {r:,} = {i_ma:.0f} mA",
-                f"Q = I²Rt = {i ** 2 * r:.1f} J per second of contact",
-                "GFCI trips at 5 mA in < 40 ms: before VF"],
+        "eqs": [f"I = V/R = {voltage} / {r:,} Ω = {i_ma:.0f} mA",
+                f"Q = I²Rt = {i ** 2 * r:.1f} W × {contact_s:.1f} s = {heat:.0f} J",
+                f"step: V = ρI/2π·(1/r − 1/(r+s)) = {step_v(1):.0f} V at 1 m, {step_v(10):.1f} V at 10 m"],
     }
+    story["captions"].sort(key=lambda c: c[0])
 
     return {
         "story": story,
         "id": "electrocution", "title": "Electrocution",
-        "inputs": dict(voltage_V=voltage, skin=condition, contact_time_s=contact_s),
+        "inputs": dict(voltage_V=voltage, skin=condition, contact_time_s=contact_s, soil_resistivity_ohm_m=rho_soil),
         "results": [
-            ("Body resistance (hand to hand)", r, "Ω", "Skin is most of it. Water lowers it 100×"),
-            ("Current through body", i * 1000, "mA", "Ohm's law: I = V/R"),
-            ("Effect", 0, "", effect(i * 1000)),
-            ("Heat deposited", heat, "J", "Q = I²Rt (Joule heating, most of it at the entry/exit points)"),
+            ("Body resistance (hand to feet)", r, "Ω", "Skin is most of it. Water lowers it 100×"),
+            ("Current through you", i_ma, "mA", "Ohm's law: I = V/R"),
+            ("Effect", 0, "", effect(i_ma)),
+            ("Heat deposited", heat, "J", "Q = I²Rt (Joule heating, most of it at the entry and exit points)"),
+            ("Step voltage 1 m from the line", step_v(1), "V", "V = ρI/2π·(1/r − 1/(r+s)), 0.8 m stride, 5 A into wet soil"),
+            ("Step voltage 10 m from the line", step_v(10), "V", "why rescuers stay 10 m back until the power is off"),
+            ("Heart output in VF", 0.0, "L/min", "fibrillation pumps nothing; CPR gives ~25–30%, a shock restarts it"),
             ("Heart in the current path?", 0, "", "Hand to hand or hand to foot both cross the chest. That is why it kills"),
         ],
         "tables": {"Voltage × skin": {"columns": ["Volts", "Skin", "R (Ω)", "Current (mA)", "Effect"],
                                        "rows": rows}},
-        "anim": {"fps": FPS, "duration": duration, "actors": {"victim": sample(victim, duration, dense=story.get("slowmo", []))},
-                 "shock_window": [2.0, 4.5]},
+        "anim": {"fps": FPS, "duration": duration,
+                 "actors": {"you": rows_you, "neighbour": rows_nb},
+                 "joints": {"you": joint_rows(joints_you, ts), "neighbour": joint_rows(joints_neighbour, ts)},
+                 "shock_window": [on, off], "t_aed": t_aed, "t_shock": t_shock, "t_power": t_power,
+                 "breaker": list(breaker), "x_stop": x_stop},
     }
 
 
