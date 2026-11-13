@@ -1002,13 +1002,13 @@ def scene_extras(sid):
             size = interp(an["flame"], t)[0]                      # physics: catch, grow while running, die rolling
             for i, o in enumerate(flames):
                 part = o["part"]
-                k = 1.0 if part == "sofa" else (size if t >= an["ignite"][part] else 0.0)
+                k = 1.0 if part == "sofa" else (size if t >= an["ignite"].get(part, math.inf) else 0.0)
                 wob = 1 + 0.18 * math.sin(fi * 1.7 + i * 2.1)
                 sx_, sy_, sz_ = base[o.name]
                 o.scale = (sx_ * k * wob, sy_ * k * wob, sz_ * k * (1 + 0.3 * math.sin(fi * 2.3 + i)))
                 show(o, k > 0.02)
-            for o in burns:                                       # the skin under it passes 60 °C
-                show(o, t >= an["burn_at"][o["part"]])
+            for o in burns:                                       # the skin under it passes 60 °C (burned parts only)
+                show(o, t >= an["burn_at"].get(o["part"], math.inf))
         return upd
     return None
 

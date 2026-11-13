@@ -1197,8 +1197,13 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
     t_crawl = t_up + 0.6
     door = (4.6, 5.4)
     crawl_v = 0.6
-    burn_at = {"left_arm": t_ign_arm + t_burn, "right_arm": t_ign_arm + t_burn + 0.15,
-               "front_torso": t_ign_torso + t_burn}
+    # when each burned part's clothing catches (the sleeves first, then the shirt front); parts not
+    # in `burned` never catch, so the film shows exactly the areas the numbers count
+    ignite_order = {"left_arm": t_ign_arm, "right_arm": t_ign_arm + 0.15, "front_torso": t_ign_torso,
+                    "back_torso": t_ign_torso + 0.3, "head": t_ign_torso + 0.4,
+                    "right_leg": t_ign_torso + 0.5, "left_leg": t_ign_torso + 0.6, "groin": t_ign_torso + 0.7}
+    ignite = {p: ignite_order[p] for p in burned}
+    burn_at = {p: t + t_burn for p, t in ignite.items()}
 
     # --- smoke: a t² fire fills the room from the ceiling ------------------------
     alpha, t_fire0, ceiling = 0.047, 60.0, 2.5       # "fast" t² growth; the sofa has burned for a minute
@@ -1250,15 +1255,15 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
         radiant = 4.0 if t < t_run else 1.5
         return max(radiant, heat_flux_kw * min(1.0, flame(t)) if t >= t_ign_arm else 0.0)
 
+    flux_steps, prev = [], 0.0                       # the flux history as steps, built once (superposition)
+    for i in range(int(60 / 0.05) + 1):
+        q = flux(i * 0.05)
+        if q != prev:
+            flux_steps.append((i * 0.05, (q - prev) * 1000))
+            prev = q
+
     def t_skin(t):
-        steps, prev, tt = [], 0.0, 0.0
-        while tt <= t:                               # flux history as small steps (superposition)
-            q = flux(tt)
-            if q != prev:
-                steps.append((tt, (q - prev) * 1000))
-                prev = q
-            tt += 0.05
-        return 33 + sum(2 * dq * math.sqrt(max(0.0, t - ti) / (math.pi * k * rho_c)) for ti, dq in steps)
+        return 33 + sum(2 * dq * math.sqrt((t - ti) / (math.pi * k * rho_c)) for ti, dq in flux_steps if ti <= t)
 
     def drop(t):
         """Kneel then fall forward. Returns hip x, hip z, body lean β from vertical and the hip angle α
@@ -1338,7 +1343,7 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
     dense = [[t_ign_arm - 0.3, t_ign_arm + 0.6, 1], [t_drop - 0.1, t_crawl + 0.1, 1]]
     rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
     ts = [r[0] for r in rows_you]
-    rows_smoke = [[t, 0.0, 0.0, round(smoke(t), 4), 0, 0, 0] for t in sorted({round(i / FPS, 4) for i in range(int(duration * FPS) + 1)})]
+    rows_smoke = sample(lambda t: (0, 0, smoke(t), 0, 0, 0), duration)
     z_end = smoke(t_door)
 
     story = {
@@ -1352,7 +1357,7 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
             [t_beat, "You try to beat it out.", "never: get out, shut the door, call 911"],
             [t_ign_arm, "Your sleeve catches.", f"{heat_flux_kw} kW/m² on your skin"],
             [t_run, "You run.", "running fans the flames: more air, more fire"],
-            [burn_at["left_arm"], "Your skin passes 60 °C.", f"after {t_burn:.1f} s under the flames, cells die"],
+            [min(burn_at.values()), "Your skin passes 60 °C.", f"after {t_burn:.1f} s under the flames, cells die"],
             [t_stop, "Stop.", ""],
             [t_drop, "Drop.", "hands over your face"],
             [t_roll, "Roll.", "smother the flames against the floor"],
@@ -1362,7 +1367,8 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
         ],
         "callouts": [
             [t_ign_arm, t_run, "you", [0, 0, 1.3], "the sleeve catches"],
-            [burn_at["left_arm"], t_drop, "you", [0, 0, 1.25], "front torso 18% · arms 9% each"],
+            [min(burn_at.values()), t_drop, "you", [0, 0, 1.25],
+             "  ·  ".join(f"{p.replace('_', ' ')} {rule_of_nines[p]}%" for p in burned)],
             [t_crawl, t_door, None, [door[0] - 1.0, door[1] - 0.6, smoke(t_crawl) + 0.2], "hot smoke layer"],
             [t_door - 0.5, duration, "you", [0, 0, 1.3], f"{tbsa}% TBSA  ·  burn centre"],
         ],
@@ -1397,7 +1403,7 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
                  "joints": {"you": joint_rows(joints_you, ts)},
                  "flame": [[t, round(flame(t), 4)] for t in ts],
                  "burned_parts": list(burned), "burn_at": burn_at,
-                 "ignite": {"left_arm": t_ign_arm, "right_arm": t_ign_arm + 0.15, "front_torso": t_ign_torso},
+                 "ignite": ignite,
                  "sofa": list(sofa), "door": list(door)},
     }
 
