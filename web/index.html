@@ -77,6 +77,11 @@
   @keyframes rise { from { opacity: .0; transform: translateY(6px); filter: blur(3px); } }
   .callouts { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
   .callouts text { font: italic 14px var(--serif); fill: var(--ink); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; }
+  .camtoggle { position: absolute; left: 10px; bottom: 8px; padding: 5px 12px; border: 1px solid var(--ink); border-radius: 999px;
+               background: var(--paper); font-size: 13px; font-style: italic; cursor: pointer; transition: background .2s, color .2s; }
+  .camtoggle:hover { border-color: var(--accent); color: var(--accent); }
+  .camtoggle[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-style: normal; }
+  .camtoggle[hidden] { display: none; }
   .hint { position: absolute; right: 10px; bottom: 8px; font-size: 12px; font-style: italic; color: var(--muted);
           transition: opacity .6s var(--ease); pointer-events: none; }
   .hint.gone { opacity: 0; }
@@ -164,7 +169,7 @@
     .film .tag, .film .state { display: none; }
     .views.swapped .film { inset: 0; width: auto; aspect-ratio: auto; box-shadow: none; z-index: 1; }
     .views.swapped .live { inset: auto 10px 10px auto; width: 36%; aspect-ratio: 3 / 4; z-index: 3; box-shadow: 0 6px 18px #1c1c2233; }
-    .views.swapped .live .read, .views.swapped .live .caption, .views.swapped .live .hint, .views.swapped .callouts { display: none; }
+    .views.swapped .live .read, .views.swapped .live .caption, .views.swapped .live .hint, .views.swapped .camtoggle, .views.swapped .callouts { display: none; }
     .swap { display: grid; place-items: center; position: absolute; z-index: 4; width: 44px; height: 44px; right: 10px; bottom: 10px;
             background: var(--paper); border: 1px solid var(--ink); border-radius: 50%; cursor: pointer;
             transform: translate(8px, 8px) scale(.78); }
@@ -210,7 +215,7 @@
       </div>
       <div class="caption" id="caption"><h2 id="capTitle"></h2><p id="capSub"></p></div>
       <svg class="callouts" id="callouts" aria-hidden="true"></svg>
-      <span class="tag">Live 3D · same keyframes</span>
+      <button class="camtoggle" id="filmcam" aria-pressed="false" hidden>Free camera</button>
       <span class="hint" id="hint">Drag to orbit · pinch or ⌘ + scroll to zoom</span>
     </div>
     <button class="swap" id="swap" aria-label="Swap film and 3D view">
@@ -256,6 +261,7 @@
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const DATA = window.SIM_DATA;
 const $ = id => document.getElementById(id);
@@ -277,11 +283,14 @@ live.prepend(renderer.domElement);
 const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.addEventListener("start", () => { $("hint").classList.add("gone"); userOrbit = true; });
+controls.addEventListener("start", () => { $("hint").classList.add("gone"); userOrbit = true; if (filmView) setFilmView(false); });
 // A plain wheel scrolls the page; zoom needs ctrl/⌘ (trackpad pinch sends ctrlKey). Touch pinch is unaffected.
 live.addEventListener("wheel", e => { if (!e.ctrlKey && !e.metaKey) e.stopImmediatePropagation(); }, { capture: true });
 
 let scene, world, actors = {}, extras = [], current, followName = null, userOrbit = false;
+// The Blender scene itself (web/models/<id>.glb): same meshes, keyframes and camera as the film.
+let model = null, mixer = null, filmCam = null, filmView = false, loadToken = 0;
+const gltfLoader = new GLTFLoader(), glbCache = {};
 const inkLine = new THREE.LineBasicMaterial({ color: C.ink });
 const inkHull = new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide });
 
@@ -312,32 +321,61 @@ function ground(w, d, c, z = 0, x = 0, y = 0) {
   const g = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat(c)); g.position.set(x, y, z);
   g.receiveShadow = true; g.userData.noInk = true; world.add(g); return g;
 }
+// Restyle a Blender export for the browser: clay Lambert (or flat colour for emissive parts),
+// shadows, and the same ink treatment as the hand-built scenes.
+const ROUND = /head|cap|shoulder|elbow|knee|hand|neck|tyre|uarm|farm|thigh|shin|swimmer/i;
+function prepareModel(root) {
+  const mats = new Map();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const src = o.material, e = src.emissive || new THREE.Color(0);
+    if (!mats.has(src)) {
+      const glow = e.r + e.g + e.b > .15;
+      mats.set(src, glow ? new THREE.MeshBasicMaterial({ color: e.clone() })
+                         : new THREE.MeshLambertMaterial({ color: src.color.clone(), side: src.side, transparent: src.transparent, opacity: src.opacity }));
+      mats.get(src).userData.glow = glow;
+    }
+    o.material = mats.get(src);
+    o.castShadow = o.receiveShadow = !o.material.userData.glow;
+    if (o.material.userData.glow) o.userData.noInk = true;
+    else if (ROUND.test(o.name)) o.userData.hull = 1;   // round part: draw its silhouette, not its facets
+  });
+  inkify(root, .02);
+}
 // Ink: hard edges as hairlines, round parts get a thin back-face hull so their silhouette is drawn.
-function inkify() {
-  const meshes = []; world.traverse(o => { if (o.isMesh && !o.userData.noInk && !o.material.transparent) meshes.push(o); });
+function inkify(root = world, hullScale = null) {
+  const meshes = []; root.traverse(o => { if (o.isMesh && !o.userData.noInk && !o.material.transparent) meshes.push(o); });
   for (const m of meshes) {
     if (m.userData.hull) {
       const h = new THREE.Mesh(m.geometry, inkHull);
-      h.scale.setScalar(1 + Math.min(.08, .006 / m.userData.hull)); h.userData.noInk = true; m.add(h);
+      h.scale.setScalar(1 + (hullScale ?? Math.min(.08, .006 / m.userData.hull))); h.userData.noInk = true; m.add(h);
     } else {
       m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 28), inkLine));
     }
   }
 }
-// The crash dummy from the film: clay body, crimson cap. Burned regions turn crimson.
+// The crash dummy from the film (render_scenario.dummy), same proportions: origin between the
+// feet, head centre at 1.64 m. Blender cylinders stand on Z; cyl() turns three's Y-axis cylinders to match.
 function dummy(burned = []) {
   const g = new THREE.Group(); g.rotation.order = "ZYX"; world.add(g);
-  const pick = part => burned.includes(part) ? mat(C.accent) : mat(C.clay);
-  cyl(.07, .84, pick("left_leg"), 0, .1, .44, g);
-  cyl(.07, .84, pick("right_leg"), 0, -.1, .44, g);
-  box(.26, .3, .1, mat(C.clayDark), 0, 0, .9, g);
-  box(.22, .4, .5, pick("front_torso"), 0, 0, 1.17, g);
-  for (const [s, part] of [[1, "left_arm"], [-1, "right_arm"]]) cyl(.05, .62, pick(part), 0, .27 * s, 1.13, g);
-  sphere(.05, mat(C.clayDark), 0, .27, 1.45, g); sphere(.05, mat(C.clayDark), 0, -.27, 1.45, g);
-  cyl(.04, .1, mat(C.clayDark), 0, 0, 1.47, g, false);
-  const head = sphere(.115, pick("head"), 0, 0, 1.62, g); head.scale.set(1, .92, 1.1);
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(.122, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.2), mat(C.accent));
-  cap.rotation.x = Math.PI / 2; add(cap, g, 0, 0, 1.65); cap.userData.hull = .12;
+  const pick = part => burned.includes(part) ? mat(C.accent) : mat(C.clay), joint = mat(C.clayDark);
+  const ell = (rx, ry, rz, m, x, y, z) => { const e = sphere(1, m, x, y, z, g); e.scale.set(rx, ry, rz); e.userData.hull = Math.min(rx, ry, rz); return e; };
+  ell(.1, .095, .12, pick("head"), 0, 0, 1.64);
+  if (!burned.includes("head")) ell(.106, .1, .085, mat(C.accent), 0, 0, 1.69);
+  cyl(.04, .1, joint, 0, 0, 1.49, g, false);
+  box(.22, .34, .4, pick("front_torso"), 0, 0, 1.25, g);
+  box(.2, .3, .18, pick("pelvis"), 0, 0, .93, g);
+  for (const [s, arm, leg] of [[1, "left_arm", "left_leg"], [-1, "right_arm", "right_leg"]]) {
+    ell(.055, .055, .055, joint, 0, .205 * s, 1.4);
+    cyl(.042, .26, pick(arm), 0, .235 * s, 1.25, g).rotation.x = Math.PI / 2 + .12 * s;
+    ell(.042, .042, .042, joint, 0, .25 * s, 1.1);
+    cyl(.036, .24, pick(arm), 0, .265 * s, .97, g);
+    ell(.04, .03, .05, mat(C.clay), 0, .27 * s, .83);
+    cyl(.065, .38, pick(leg), 0, .09 * s, .72, g);
+    ell(.055, .055, .055, joint, 0, .09 * s, .5);
+    cyl(.05, .4, pick(leg), 0, .09 * s, .28, g);
+    box(.24, .1, .07, mat(C.clay), .05, .09 * s, .035, g);
+  }
   return g;
 }
 function label(text, x, y, z, size = 1) {
@@ -347,6 +385,43 @@ function label(text, x, y, z, size = 1) {
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   s.scale.set(8 * size, size, 1); s.position.set(x, y, z); world.add(s); return s;
+}
+// The SUV from the film (render_scenario.car), built from the same side profile the physics
+// uses for the windscreen contact. Origin on the ground under the middle, bumper at x = +2.2.
+function profileMesh(pts, depth, m, parent, y = 0) {
+  const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z)));
+  const g = depth ? new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }) : new THREE.ShapeGeometry(shape);
+  g.rotateX(Math.PI / 2);                     // shape (x, y) -> car (x, z); extrusion runs along -y
+  if (depth) g.translate(0, depth / 2, 0);
+  return add(new THREE.Mesh(g, m), parent, 0, y, 0);
+}
+function suv() {
+  const car = new THREE.Group(); world.add(car);
+  profileMesh([[2.2, .32], [2.24, .62], [2.1, .92], [1.0, 1.04], [.25, 1.62], [-1.75, 1.66], [-2.18, 1.4],
+               [-2.28, .95], [-2.28, .34], [-1.8, .3], [1.8, .3]], 1.92, mat(C.clay), car);
+  const side = [[.95, 1.09], [.3, 1.56], [-1.65, 1.6], [-2.05, 1.38], [-2.1, 1.09]];
+  for (const sy of [.965, -.965]) {
+    profileMesh(side, 0, mat(C.glass, { side: THREE.DoubleSide }), car, sy);
+    box(.1, .01, .51, mat(C.clay), -.5, sy * 1.002, 1.345, car);                 // B-pillar
+  }
+  const ws = new THREE.BufferGeometry().setFromPoints([[1.032, -.86, 1.078], [1.032, .86, 1.078], [.292, .8, 1.608],
+    [1.032, -.86, 1.078], [.292, .8, 1.608], [.292, -.8, 1.608]].map(p => new THREE.Vector3(...p)));
+  ws.computeVertexNormals();
+  add(new THREE.Mesh(ws, mat(C.glass, { side: THREE.DoubleSide })), car, 0, 0, 0);
+  box(.06, .84, .28, mat(C.clayDark), 2.215, 0, .72, car);                         // grille
+  for (const sy of [.68, -.68]) box(.08, .32, .08, mat(0xffffff), 2.17, sy, .86, car);
+  for (const wx of [1.45, -1.45]) for (const wy of [.86, -.86]) {
+    // CylinderGeometry's axis is local Y, which is already the axle (left-right): no rotation.
+    const tyre = add(new THREE.Mesh(new THREE.CylinderGeometry(.38, .38, .26, 40), mat(C.tyre)), car, wx, wy, .38);
+    tyre.userData.hull = .38;
+    const rim = add(new THREE.Mesh(new THREE.CylinderGeometry(.25, .25, .024, 40), mat(C.clay)), car, wx, wy * 1.16, .38);
+    rim.userData.noInk = true;
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      box(.22, .02, .04, mat(C.clayDark), wx + .13 * Math.cos(a), wy * 1.175, .38 + .13 * Math.sin(a), car).rotation.y = -a;
+    }
+  }
+  return car;
 }
 function streetBlock(y, n = 7) {
   for (let i = 0; i < n; i++) {
@@ -367,18 +442,7 @@ const BUILD = {
     box(160, .25, .16, mat(C.clayDark), 0, 4.5, .08); box(160, .25, .16, mat(C.clayDark), 0, -4.5, .08);
     for (let i = 0; i < 8; i++) box(.5, 3.6, .01, mat(C.paper), -2 + i * 1, 0, .006);   // zebra across the road
     streetBlock(13);
-    const car = new THREE.Group(); world.add(car);
-    box(4.5, 1.84, .62, mat(C.clay), 0, 0, .62, car);
-    box(1.0, 1.8, .14, mat(C.clay), 1.75, 0, .98, car);
-    box(2.6, 1.7, .62, mat(C.clay), -.55, 0, 1.24, car);
-    box(.05, 1.5, .5, mat(C.glass), .76, 0, 1.24, car).rotation.y = -.55;
-    box(2.2, 1.72, .42, mat(C.glass), -.6, 0, 1.28, car);
-    box(.06, 1.2, .18, mat(C.ink), 2.25, 0, .52, car);
-    for (const wx of [1.45, -1.45]) for (const wy of [.86, -.86]) {
-      cyl(.36, .26, mat(C.tyre), wx, wy, .36, car);
-      cyl(.2, .27, mat(C.clay), wx, wy, .36, car, false);
-    }
-    actors.car = car; actors.victim = dummy();
+    actors.car = suv(); actors.victim = dummy();
     followName = "victim";
     camera.position.set(6, 2.4, 9.5);
     return "The car brakes too late at 50 km/h. Watch the bumper take the legs, the head strike the windscreen, then the second impact on the road. Crimson bands on the timeline are the slow-motion windows.";
@@ -499,7 +563,12 @@ const video = $("video"), film = $("film");
 let clock = 0, playing = !REDUCED, rate = 1, lastCap = -1, lastSlow = null;
 const tmp = new THREE.Vector3();
 
-function apply(t) {
+function apply(t, ft) {
+  if (mixer) {
+    mixer.setTime(ft);                      // glTF time 0 = film frame 1, so film time drives it directly
+    followActor();
+    return;
+  }
   for (const [name, obj] of Object.entries(actors)) {
     const r = sampleRows(current.anim.actors[name], t);
     obj.position.set(r[1], r[2], r[3]);
@@ -515,10 +584,19 @@ function apply(t) {
       e.bodyFire.scale.setScalar(s * (.85 + .3 * Math.random())); e.bodyFire.visible = s > .02; }
     if (e.len) e.obj.position.y = e.y0 + ((t * 1.5) % 14);
   }
-  if (followName && !userOrbit) {
+  followActor();
+}
+function followActor() {
+  if (followName && !userOrbit && actors[followName]) {
     const p = actors[followName].getWorldPosition(tmp);
     controls.target.lerp(p.add(new THREE.Vector3(0, .8, 0)), .12);
   }
+}
+function setFilmView(on) {
+  filmView = on && !!filmCam;
+  $("filmcam").setAttribute("aria-pressed", filmView);
+  $("filmcam").textContent = filmView ? "Film camera" : "Free camera";
+  if (!filmView) resize();
 }
 
 function hud(t, ft) {
@@ -550,8 +628,13 @@ function callouts(t) {
   let out = ""; const used = [];
   for (const [t0, t1, actor, p, text] of current.story.callouts) {
     if (t < t0 || t > t1) continue;
-    tmp.set(p[0], p[1], p[2]);
-    (actor ? actors[actor] : world).localToWorld(tmp);
+    if (model) {                                 // glTF is Y-up: Blender (x, y, z) -> (x, z, -y)
+      tmp.set(p[0], p[2], -p[1]);
+      if (actor) actors[actor].localToWorld(tmp);
+    } else {
+      tmp.set(p[0], p[1], p[2]);
+      (actor ? actors[actor] : world).localToWorld(tmp);
+    }
     tmp.project(camera);
     if (tmp.z > 1) continue;
     const x = (tmp.x + 1) / 2 * w, y = (1 - tmp.y) / 2 * h;
@@ -660,16 +743,40 @@ function setPlaying(p) {
 const filmOk = () => film.dataset.state === "ready";
 function seek(ft) {
   clock = Math.max(0, Math.min(current.tl.filmDur - 1e-3, ft));
-  if (filmOk()) video.currentTime = clock;
+  if (filmOk()) video.currentTime = clock;     // ignored by servers without byte ranges; the clock still moves
 }
 
+function loadGlb(id) {
+  glbCache[id] ??= gltfLoader.loadAsync(`models/${id}.glb`).catch(() => null);
+  return glbCache[id];
+}
+async function useModel(id, token) {
+  const gltf = await loadGlb(id);
+  if (!gltf || token !== loadToken) return;          // no export yet, or the visitor moved on: keep the hand-built scene
+  scene.remove(world);
+  model = gltf.scene.clone(true);                    // clone so revisiting a tab starts from a clean rig
+  prepareModel(model);
+  scene.add(model);
+  extras = [];
+  actors = {};
+  for (const name of Object.keys(current.anim.actors)) {
+    const o = model.getObjectByName(name); if (o) actors[name] = o;
+  }
+  mixer = new THREE.AnimationMixer(model);
+  for (const clip of gltf.animations) mixer.clipAction(clip).play();
+  filmCam = model.getObjectByProperty("isCamera", true) || null;
+  $("filmcam").hidden = !filmCam;
+  $("live").dataset.source = "blender";
+}
 function load(id) {
   current = DATA.scenarios.find(s => s.id === id);
   current.tl = buildTimeline(current.story, current.anim.duration);
   newScene();
+  model = null; mixer = null; filmCam = null; $("filmcam").hidden = true; $("live").dataset.source = "built";
   controls.target.set(0, 0, 0);
   $("note").innerHTML = BUILD[id](current) + ` <span class="legend-band"></span> slow motion`;
   inkify();
+  useModel(id, ++loadToken);
   graphs = current.story.graphs.slice(0, 2).map((g, i) => buildGraph($("g" + i), g));
   $("eqs").innerHTML = current.story.eqs.map(e => `<p>${esc(e)}</p>`).join("");
   $("hud1note").textContent = current.story.hud[0].note || "";
@@ -710,6 +817,7 @@ document.querySelectorAll(".speed button").forEach(b => b.onclick = () => {
   document.querySelectorAll(".speed button").forEach(x => x.setAttribute("aria-pressed", x === b));
 });
 $("swap").onclick = () => { $("views").classList.toggle("swapped"); };
+$("filmcam").onclick = () => { setFilmView(!filmView); if (!filmView) { userOrbit = false; } };
 addEventListener("keydown", e => {
   if (e.target.closest("input, button, select, textarea")) return;
   if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
@@ -727,10 +835,16 @@ new ResizeObserver(resize).observe(live);
 let last = performance.now();
 function loop(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
-  if (filmOk() && !video.seeking) clock = video.currentTime;          // the film is the master clock
+  const canSeek = filmOk() && video.seekable.length && video.seekable.end(0) > 0;
+  if (canSeek && !video.seeking) clock = video.currentTime;           // the film is the master clock
   else if (playing) { clock += dt * rate; if (clock >= current.tl.filmDur) clock = 0; }
   const t = simAt(clock);
-  apply(t); controls.update(); renderer.render(scene, camera);
+  apply(t, clock);
+  if (filmView && filmCam) {                // look through Blender's camera: the film's exact shot
+    filmCam.getWorldPosition(camera.position); filmCam.getWorldQuaternion(camera.quaternion);
+    if (camera.fov !== filmCam.fov) { camera.fov = filmCam.fov; camera.updateProjectionMatrix(); }
+  } else controls.update();
+  renderer.render(scene, camera);
   hud(t, clock); callouts(t);
   requestAnimationFrame(loop);
 }

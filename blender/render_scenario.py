@@ -8,6 +8,7 @@ Everything on screen comes from out/scenarios.json (run `python3 lab/build.py`).
   blender --python blender/render_scenario.py -- pedestrian            # open and explore
   blender -b --python blender/render_scenario.py -- all --render       # MP4s into out/
   blender -b --python blender/render_scenario.py -- fall --still 60    # one PNG frame
+  blender -b --python blender/render_scenario.py -- all --glb          # web/models/*.glb for the viewer
 
 Scenario ids: pedestrian, drowning, fall, electrocution, burns, all
 """
@@ -27,6 +28,7 @@ SID = next((a for a in argv if not a.startswith("--") and not a.isdigit()), "ped
 RENDER = "--render" in argv
 MAX_FRAMES = int(argv[argv.index("--frames") + 1]) if "--frames" in argv else None
 STILL = int(argv[argv.index("--still") + 1]) if "--still" in argv else None
+GLB = "--glb" in argv
 
 with open(os.path.join(ROOT, "out", "scenarios.json")) as f:
     DATA = {s["id"]: s for s in json.load(f)}
@@ -803,6 +805,8 @@ def build(sid):
     sc.render.ffmpeg.constant_rate_factor = "HIGH"
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ROOT, "out", f"{sid}.blend"))
 
+    if GLB:
+        export_glb(sid, sc, world_coll, times, extra)
     if STILL is not None:
         sc.frame_set(STILL)
         try:
@@ -835,6 +839,48 @@ def build(sid):
         os.makedirs(media, exist_ok=True)
         shutil.copy(os.path.join(ROOT, "out", f"{sid}.mp4"), media)
         print(f"Rendered out/{sid}.mp4 ({len(times)} frames)")
+
+
+def export_glb(sid, sc, world_coll, times, extra):
+    """The film's scene as glTF for the web viewer: same meshes, keyframes and camera.
+    Animation time 0 = film frame 1, so the viewer drives it with video.currentTime.
+    Effects the frame handler makes (sparks blinking, flames flickering) are baked
+    into scale keys, because glTF has no visibility channel."""
+    fx = [o for o in world_coll.all_objects if o.name.startswith(("spark", "bolt")) or o.get("flame")]
+    if extra and fx:
+        base = {o.name: tuple(o.scale) for o in fx}
+        for f in range(1, len(times) + 1):
+            extra(f - 1, times[f - 1])
+            for o in fx:
+                if o.hide_render:
+                    o.scale = (0, 0, 0)
+                elif not o.get("flame"):
+                    o.scale = base[o.name]
+                o.keyframe_insert("scale", frame=f)
+                show(o, True)
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in world_coll.all_objects:
+        if o.type in {"MESH", "CURVE", "EMPTY", "CAMERA"}:
+            o.hide_set(False)
+            o.select_set(True)
+    out_dir = os.path.join(ROOT, "web", "models")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{sid}.glb")
+    opts = dict(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
+                export_cameras=True, export_lights=False, export_animations=True, export_force_sampling=True,
+                export_frame_range=True, export_animation_mode="SCENE", export_anim_slide_to_zero=True,
+                export_draco_mesh_compression_enable=False)
+    for _ in range(len(opts)):                  # drop options this Blender's exporter doesn't know
+        try:
+            bpy.ops.export_scene.gltf(**opts)
+            break
+        except TypeError as e:
+            bad = next((k for k in opts if f'"{k}"' in str(e) or f"'{k}'" in str(e)), None)
+            if not bad:
+                raise
+            print(f"glTF exporter: no option {bad}, skipping it")
+            opts.pop(bad)
+    print(f"Exported web/models/{sid}.glb ({os.path.getsize(path) / 1e6:.1f} MB, {len(times)} frames)")
 
 
 def encode_video(frames_dir, n, out_path):

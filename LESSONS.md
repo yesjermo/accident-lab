@@ -34,8 +34,8 @@ Every scenario below lands in the same primary survey, done in this order becaus
 | Bumper force on lower leg | **9.26 kN** | F = mΔv/Δt with 10 kg leg, 15 ms. Tibia breaks at ~4 kN |
 | Head vs windscreen: deceleration | **96.35 g** | a = v²/2d, head at 0.7·v0, 5 cm glass deflection |
 | Head vs windscreen: HIC | **937 ** | HIC > 1000 means a high risk of serious brain injury |
-| Head vs road: HIC | **598 ** | 1 cm stopping distance on asphalt. The secondary impact often kills |
-| Throw distance | **12.59 m** | air 7.0 m + slide 5.6 m (μ = 0.7) |
+| Head vs road: HIC | **779 ** | 1 cm stopping distance on asphalt. The secondary impact often kills |
+| Throw distance | **14.40 m** | air 8.8 m + slide 5.6 m (μ = 0.7) |
 | Stopping distance if seen 1.5 s earlier | **33.12 m** | d = v·t_react + v²/(2μg) |
 | Fatality risk at this speed | **8.32 %** | Logistic fit to real crash data (Rosén & Sander 2009) |
 

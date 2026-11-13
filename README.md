@@ -29,7 +29,8 @@ A study project that walks through five accidents three ways:
 
 ```bash
 python3 lab/build.py                 # physics -> out/scenarios.json, web/data.js, LESSONS.md
-python3 -m http.server 8765 --directory web   # then open http://localhost:8765
+python3 lab/test_animation.py        # keyframe checks: nothing passes through the car or the ground
+python3 lab/serve.py                 # then open http://localhost:8765 (serves web/ with byte ranges so the films can seek)
 ```
 
 The viewer plays the rendered Blender film (`web/media/<id>.mp4`) and the live Three.js scene on one timeline. The film is the clock; the 3D scene, readouts, callouts and graphs follow it, so slow motion around each impact shows up in both. Crimson bands on the timeline mark the slow-motion windows. Drag to orbit the 3D view (pinch or ⌘ + scroll to zoom), press space to play or pause and use the arrow keys to step frames. On a phone the film sits in a corner of the 3D view; tap the swap button to enlarge it. Scenarios without a rendered film still play in 3D.
@@ -42,9 +43,16 @@ Install Blender (free) from blender.org, or with Homebrew: `brew install --cask 
 blender --python blender/render_scenario.py -- pedestrian            # open the scene to explore
 blender -b --python blender/render_scenario.py -- all --render       # render every scenario to out/*.mp4
 blender -b --python blender/render_scenario.py -- fall --still 50    # one test frame -> out/previews/
+blender -b --python blender/render_scenario.py -- all --glb          # the same scenes as glTF -> web/models/ for the viewer
 ```
 
 The videos are vertical (720×1280) in a technical-illustration style: white clay models with ink outlines (Freestyle) and one crimson accent. The HUD at the top shows `t`, a slow-motion badge (×1/13 around impacts) and two live readouts. Below that come a serif caption for each phase and callouts with leader lines. The bottom panel holds two graphs with a moving cursor, plus the equations with the numbers filled in. All of it is driven by the `story` block each scenario returns in `lab/physics.py`: series, captions, callouts, slow-mo windows and equations.
+
+### How the browser 3D matches Blender
+
+The viewer does not rebuild the scenes by hand. `--glb` exports each Blender scene to glTF (`web/models/<id>.glb`): the same meshes, the same per-frame keyframes and the film's camera, with the sparks and flames baked into scale keys. Three.js loads it with `GLTFLoader` and plays it with an `AnimationMixer` set to the video's current time. Animation time 0 is film frame 1, so the film and the 3D view always show the same instant. **Film camera** looks through Blender's camera; drag to leave it and orbit freely. If a `.glb` is missing, the viewer falls back to a simplified hand-built scene driven by the same keyframes.
+
+After changing the physics, re-export both: `--render` for the films and `--glb` for the 3D.
 
 Each run also saves `out/<scenario>.blend`. The HUD text is updated by a frame handler the script registers, so when you open a saved `.blend` on its own, the 3D animation plays but the HUD stays frozen. Open scenes through the script to get the live HUD.
 
@@ -65,6 +73,7 @@ Edit `ALL` at the bottom of `physics.py` (e.g. `lambda: physics.pedestrian(speed
 - `lab/physics.py`: all the calculations and animation keyframes (standard library only)
 - `lab/medical.py`: mechanism, prevention, first aid, hospital and surgery notes
 - `lab/build.py`: runs both and writes the outputs
+- `lab/test_animation.py`: checks the keyframes against the car and dummy geometry (no clipping, head meets the glass on cue, enough keys for slow motion)
 - `blender/render_scenario.py`: builds each scene in Blender from the keyframes
 - `web/index.html`: the viewer: film and live 3D in sync, graphs, physics tables and medical notes
 - `web/media/`: rendered films, copied there by `render_scenario.py --render`

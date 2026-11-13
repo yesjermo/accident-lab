@@ -25,10 +25,25 @@ def kmh(v):        # km/h -> m/s
     return v / 3.6
 
 
-def sample(fn, duration, fps=FPS):
-    """Call fn(t) -> (x,y,z,rx,ry,rz) at every frame and return keyframe rows."""
-    n = int(duration * fps) + 1
-    return [[round(i / fps, 4)] + [round(c, 4) for c in fn(i / fps)] for i in range(n)]
+def sample(fn, duration, fps=FPS, dense=(), dense_dt=1 / 600):
+    """Call fn(t) -> (x,y,z,rx,ry,rz) at every frame and return keyframe rows.
+    `dense` windows [[t0, t1, ...]] (the slow-motion windows) are sampled every
+    dense_dt, so a ×1/13 film shows real motion instead of a straight line
+    between two 24 fps keys."""
+    ts = {round(i / fps, 5) for i in range(int(duration * fps) + 1)}
+    for w in dense:
+        t0, t1 = w[0], min(w[1], duration)
+        ts |= {round(t0 + i * dense_dt, 5) for i in range(int((t1 - t0) / dense_dt) + 1)}
+    return [[round(t, 5)] + [round(c, 5) for c in fn(t)] for t in sorted(ts)]
+
+
+def hip_to_feet(hip, rx, ry, rz, hip_h=0.93):
+    """Pose with the origin between the feet, from a hip position and rotation.
+    Bodies tumble about their centre of mass (near the hips), not about their
+    feet, so the motion is planned at the hip and the feet follow."""
+    cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+    up = (cz * sy * cx + sz * sx, sz * sy * cx - cz * sx, cy * cx)   # R(rx,ry,rz) · (0, 0, 1)
+    return (hip[0] - hip_h * up[0], hip[1] - hip_h * up[1], hip[2] - hip_h * up[2], rx, ry, rz)
 
 
 def series(fn, t_end, dt=1 / 120, breaks=()):
@@ -84,9 +99,11 @@ def pedestrian(speed_kmh=50, car_mass=1500, ped_mass=75, mu_brake=0.8,
 
     # Throw: carried briefly on the bonnet, then launched.
     t_wrap = 0.15
-    launch_h, launch_vz = 1.1, 1.0
+    # Hips leave the bonnet at 1.11 m with 2 m/s upward (the wrap rotation lifts
+    # the body); the car keeps braking underneath, so the body lands ahead of it.
+    launch_h, launch_vz = 1.11, 2.0
     vx_launch = 0.95 * v_ped
-    t_air = (launch_vz + math.sqrt(launch_vz ** 2 + 2 * G * (launch_h - 0.15))) / G
+    t_air = (launch_vz + math.sqrt(launch_vz ** 2 + 2 * G * (launch_h - BODY_HALF_THICKNESS))) / G
     air_dist = vx_launch * t_air
     vx_land = 0.7 * vx_launch           # energy lost on first ground impact
     slide_dist = vx_land ** 2 / (2 * mu_body * G)
@@ -118,29 +135,60 @@ def pedestrian(speed_kmh=50, car_mass=1500, ped_mass=75, mu_brake=0.8,
             x = -car_front + v0 * tb - 0.5 * mu_brake * G * tb ** 2
         return (x, 0, 0, 0, 0, 0)
 
-    def ped(t):
-        # origin of the pedestrian = feet; pitch about Y
+    # The wrap, planned in the car's frame (x forward from the car origin, z up):
+    # the bumper sweeps the legs, the hips slide back onto the bonnet and the
+    # body pitches back until the head meets the windscreen, at t_ws.
+    hip_h = 0.93
+    stand_x = 0.08                               # leg radius: the bumper reaches the shins at t_hit
+    hip_rest = (car_front + stand_x, hip_h)      # standing, hips just ahead of the bumper
+    hip_bonnet = (1.55, launch_h)                # on the bonnet, 10 cm above the panel
+    head_r, head_arm = 0.11, 1.64 - hip_h
+    ws_a, ws_b = (1.0, 1.04), (0.25, 1.62)       # windscreen line in the car profile (render_scenario.car)
+    k_ws = 0.10 / t_wrap                         # head reaches the glass 100 ms into the wrap
+
+    def head_gap(pitch):
+        hx, hz = hip_bonnet[0] + head_arm * math.sin(pitch), hip_bonnet[1] + head_arm * math.cos(pitch)
+        dx, dz = ws_b[0] - ws_a[0], ws_b[1] - ws_a[1]
+        return ((hx - ws_a[0]) * dz - (hz - ws_a[1]) * dx) / math.hypot(dx, dz) - head_r
+
+    lo, hi = 0.0, -math.pi / 2                   # pitch where the head just touches the glass
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if head_gap(mid) > 0 else (lo, mid)
+    pitch_ws = lo
+    lying = math.pi / 2                          # flat on the road, head toward the direction of travel
+
+    def ease(k):
+        k = max(0.0, min(1.0, k))
+        return k * k * (3 - 2 * k)
+
+    def ped_hip(t):
+        """Hip position and rotation: (x, y, z, rx, ry, rz)."""
         if t < t_hit:
-            return (0, 0, 0, 0, 0, 0)
+            return (stand_x, 0, hip_h, 0, 0, 0)
         tt = t - t_hit
-        if tt < t_wrap:                 # wrap onto bonnet
-            k = tt / t_wrap
-            cx = car(t)[0] + car_front
-            return (cx, 0, 0.6 * k, 0, -1.35 * k, 0)
+        if tt < t_wrap:
+            # first the bumper sweeps the legs up (pitch), then the hips slide back along the bonnet
+            k = tt / (k_ws * t_wrap)
+            lx = hip_rest[0] + (hip_bonnet[0] - hip_rest[0]) * ease((k - 0.25) / 0.75)
+            lz = hip_rest[1] + (hip_bonnet[1] - hip_rest[1]) * ease(k)
+            return (car(t)[0] + lx, 0, lz, 0, pitch_ws * ease(k / 0.7), 0)
         tt -= t_wrap
-        x0 = car(t_hit + t_wrap)[0] + car_front
-        if tt < t_air:                  # airborne, tumbling
-            x = x0 + vx_launch * tt
-            z = 0.6 + (launch_h - 0.6) * min(1, tt / 0.1) + launch_vz * tt - 0.5 * G * tt ** 2
-            z = max(z, 0.15)
-            # half a somersault in the air: from lying on the bonnet to lying on the road
-            pitch = -1.35 + (LYING_PITCH + 1.35) * (tt / t_air)
-            return (x, 0, z - 0.03, 0.4 * tt, pitch, 0)
+        x0 = car(t_hit + t_wrap)[0] + hip_bonnet[0]
+        if tt < t_air:                  # airborne: the hips fly a parabola, the body tumbles about them
+            z = launch_h + launch_vz * tt - 0.5 * G * tt ** 2          # lands at BODY_HALF_THICKNESS at t_air
+            # forward roll over the hips once clear of the bonnet: the head swings up and ahead
+            pitch = pitch_ws + (lying - pitch_ws) * ease((tt / t_air - 0.35) / 0.65)
+            return (x0 + vx_launch * tt, 0, z, 0.4 * tt, pitch, 0)
         tt -= t_air
-        xl = x0 + air_dist
         ts = min(tt, t_slide)
-        x = xl + vx_land * ts - 0.5 * mu_body * G * ts ** 2
-        return (x, 0, BODY_HALF_THICKNESS, 0.4 * t_air, LYING_PITCH, 0.6 * ts)
+        x = x0 + air_dist + vx_land * ts - 0.5 * mu_body * G * ts ** 2
+        return (x, 0, BODY_HALF_THICKNESS, 0.4 * t_air, lying, 0.6 * ts)
+
+    def ped(t):
+        """Origin between the feet, as the film and the viewer expect."""
+        x, y, z, rx, ry, rz = ped_hip(t)
+        return hip_to_feet((x, y, z), rx, ry, rz, hip_h)
 
     speeds = [20, 30, 40, 50, 60, 70, 80]
     table_rows = []
@@ -170,7 +218,7 @@ def pedestrian(speed_kmh=50, car_mass=1500, ped_mass=75, mu_brake=0.8,
         "slowmo": [[t_hit - 0.03, t_hit + 0.16, 1 / 13], [t_land - 0.02, t_land + 0.03, 1 / 13]],
         "series": {
             "force": series(force_kn, duration, breaks=breaks),
-            "v_ped": series(lambda t: speed_of(ped)(t) * 3.6, duration, breaks=breaks),
+            "v_ped": series(lambda t: speed_of(ped_hip)(t) * 3.6, duration, breaks=breaks),   # centre of mass
             "v_car": series(lambda t: speed_of(car)(t) * 3.6, duration),
         },
         "hud": [{"sym": "F", "series": "force", "unit": "kN", "fmt": "{:.1f}", "note": "contact force on the body"},
@@ -221,7 +269,8 @@ def pedestrian(speed_kmh=50, car_mass=1500, ped_mass=75, mu_brake=0.8,
             "columns": ["km/h", "Car KE (kJ)", "Stopping dist (m)", "Windscreen HIC", "Fatality risk"],
             "rows": table_rows}},
         "anim": {"fps": FPS, "duration": duration,
-                 "actors": {"car": sample(car, duration), "victim": sample(ped, duration)}},
+                 "actors": {"car": sample(car, duration, dense=story["slowmo"]),
+                            "victim": sample(ped, duration, dense=story["slowmo"])}},
     }
 
 
@@ -479,7 +528,7 @@ def fall(height=6.0, mass=70):
                    "Height": {"columns": ["Height (m)", "≈ Storeys", "Impact (m/s)", "Impact (km/h)", "g on concrete"],
                               "rows": heights}},
         "anim": {"fps": FPS, "duration": duration,
-                 "actors": {"victim": sample(victim, duration)},
+                 "actors": {"victim": sample(victim, duration, dense=story.get("slowmo", []))},
                  "building_height": height},
     }
 
@@ -565,7 +614,7 @@ def electrocution(voltage=120, condition="wet", contact_s=1.0):
         ],
         "tables": {"Voltage × skin": {"columns": ["Volts", "Skin", "R (Ω)", "Current (mA)", "Effect"],
                                        "rows": rows}},
-        "anim": {"fps": FPS, "duration": duration, "actors": {"victim": sample(victim, duration)},
+        "anim": {"fps": FPS, "duration": duration, "actors": {"victim": sample(victim, duration, dense=story.get("slowmo", []))},
                  "shock_window": [2.0, 4.5]},
     }
 
@@ -657,7 +706,7 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
             ("Smoke at head height", 0, "", "CO and cyanide kill more fire victims than flames. Crawl low"),
         ],
         "tables": {"Radiant heat": {"columns": ["kW/m²", "Source", "Seconds to burn"], "rows": rows}},
-        "anim": {"fps": FPS, "duration": duration, "actors": {"victim": sample(victim, duration)},
+        "anim": {"fps": FPS, "duration": duration, "actors": {"victim": sample(victim, duration, dense=story.get("slowmo", []))},
                  "burned_parts": list(burned)},
     }
 
