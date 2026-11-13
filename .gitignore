@@ -1,0 +1,11 @@
+# render byproducts (the films that ship live in web/media)
+out/frames/
+out/previews/
+out/*.mp4
+out/*.blend
+out/*.blend1
+out/*.log
+__pycache__/
+.DS_Store
+.claude/
+.impeccable/

@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Accident Lab</title>
+<meta name="description" content="Five accidents explained three ways: the physics, a 3D simulation driven by it, and the trauma surgeon's view.">
+<meta name="theme-color" content="#f6f5f2">
+<style>
+  :root {
+    --paper: #f6f5f2; --paper-2: #eeede9; --clay: #ecebe8; --rule: #d6d5d1;
+    --ink: #1c1c22; --ink-2: #4a4a52; --muted: #6c6c74;
+    --accent: #b01630; --accent-wash: #b016301a;
+    --green: #1e7846; --amber: #b4720c;
+    --serif: Georgia, "Times New Roman", serif;
+    --gutter: clamp(16px, 3vw, 32px);
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 var(--serif); }
+  ::selection { background: var(--accent); color: var(--paper); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  * { scrollbar-color: var(--rule) transparent; scrollbar-width: thin; }
+  a { color: var(--accent); text-underline-offset: .18em; }
+  button { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums lining-nums; }
+
+  /* ---------------------------------------------------------------- masthead */
+  .mast { padding: 14px var(--gutter) 0; border-bottom: 1px solid var(--ink); }
+  .mast-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .brand { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+  .brand i { font-weight: 400; font-size: 15px; color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+  .sos { font-size: 14px; color: var(--ink-2); }
+  .sos b { color: var(--accent); }
+  .tabs { display: flex; gap: 28px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { background: none; border: 0; padding: 8px 0 10px; cursor: pointer; white-space: nowrap;
+                 font-size: 16px; color: var(--muted); border-bottom: 2px solid transparent;
+                 transition: color .2s var(--ease), border-color .2s var(--ease); }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--accent); }
+
+  /* ---------------------------------------------------------------- theatre */
+  .theatre { padding: 18px var(--gutter) 0; --h: clamp(420px, calc(100svh - 250px), 860px); }
+  .views { display: grid; grid-template-columns: calc(var(--h) * 9 / 16) minmax(0, 1fr); gap: 18px; height: var(--h); }
+  .film, .live { position: relative; margin: 0; background: var(--paper); border: 1px solid var(--ink); overflow: hidden; }
+  .film video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--paper); }
+  .film .tag, .live .tag { position: absolute; left: 10px; bottom: 8px; font-size: 12px; font-style: italic; color: var(--muted);
+                           pointer-events: none; }
+  .film .state { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center;
+                 font-style: italic; color: var(--muted); font-size: 15px; }
+  .film .state code { font: 12px ui-monospace, Menlo, monospace; color: var(--ink-2); font-style: normal; display: block; margin-top: 8px; }
+  .film[data-state="ready"] .state { display: none; }
+  .film[data-state="missing"] video { visibility: hidden; }
+  .live canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .live canvas:active { cursor: grabbing; }
+  .swap { display: none; }
+
+  /* live overlay: readouts + caption, the same reading as the film's HUD */
+  .read { position: absolute; left: 0; right: 0; top: 0; padding: 12px 16px 0; display: grid;
+          grid-template-columns: 1fr auto 1fr; align-items: start; pointer-events: none;
+          background: linear-gradient(var(--paper) 55%, #f6f5f200); }
+  .read .clock { font-size: 15px; }
+  .badge { display: inline-block; margin-top: 4px; padding: 1px 7px; border: 1px solid var(--accent); color: var(--accent);
+           font-size: 13px; font-style: italic; opacity: 0; transition: opacity .25s var(--ease); }
+  .badge.on { opacity: 1; }
+  .hud1 { text-align: center; color: var(--accent); }
+  .hud1 .v { font-size: 26px; font-style: italic; line-height: 1.1; }
+  .hud1 small { display: block; font-size: 12px; font-style: italic; color: var(--muted); }
+  .hud2 { text-align: right; font-size: 17px; font-style: italic; }
+  .caption { position: absolute; left: 0; right: 0; top: 74px; text-align: center; pointer-events: none; padding: 0 16px; }
+  .caption h2 { margin: 0; font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -.015em; text-wrap: balance; }
+  .caption p { margin: 2px 0 0; font-style: italic; font-size: 14px; color: var(--ink-2); text-wrap: balance; }
+  .caption.flip h2, .caption.flip p { animation: rise .5s var(--ease); }
+  @keyframes rise { from { opacity: .0; transform: translateY(6px); filter: blur(3px); } }
+  .callouts { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .callouts text { font: italic 14px var(--serif); fill: var(--ink); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; }
+  .hint { position: absolute; right: 10px; bottom: 8px; font-size: 12px; font-style: italic; color: var(--muted);
+          transition: opacity .6s var(--ease); pointer-events: none; }
+  .hint.gone { opacity: 0; }
+
+  /* ---------------------------------------------------------------- timeline */
+  .transport { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 0 6px; }
+  .play { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+          display: grid; place-items: center; cursor: pointer; transition: transform .2s var(--ease), background .2s; }
+  .play:hover { background: var(--accent); border-color: var(--accent); }
+  .play:active { transform: scale(.94); }
+  .play svg { width: 16px; height: 16px; }
+  .tclock { font-size: 15px; min-width: 9.5em; }
+  .tclock i { color: var(--muted); }
+  .track { position: relative; height: 34px; }
+  .track .rail { position: absolute; left: 0; right: 0; top: 16px; height: 1px; background: var(--ink); }
+  .track .band { position: absolute; top: 9px; height: 15px; background: var(--accent-wash); border-left: 1px solid var(--accent);
+                 border-right: 1px solid var(--accent); }
+  .track .hold { position: absolute; top: 12px; height: 9px; right: 0; background: var(--paper-2); }
+  .track .tick { position: absolute; top: 11px; width: 1px; height: 11px; background: var(--ink); }
+  .track .done { position: absolute; left: 0; top: 15px; height: 3px; background: var(--accent); }
+  .track .head { position: absolute; top: 7px; width: 2px; height: 19px; background: var(--accent); margin-left: -1px; }
+  .track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+  .track input:focus-visible + .focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .track .focus { position: absolute; inset: 0; pointer-events: none; }
+  .speed { display: flex; border: 1px solid var(--ink); }
+  .speed button { border: 0; background: none; padding: 6px 10px; cursor: pointer; font-size: 14px; }
+  .speed button + button { border-left: 1px solid var(--ink); }
+  .speed button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .note { margin: 0; padding-bottom: 6px; font-style: italic; font-size: 15px; color: var(--ink-2); }
+  .note b { font-style: normal; }
+  .legend-band { display: inline-block; width: 18px; height: 9px; background: var(--accent-wash); border: 1px solid var(--accent); vertical-align: -1px; }
+
+  /* ---------------------------------------------------------------- readings */
+  .readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.35fr); gap: 28px;
+              padding: 18px var(--gutter) 26px; border-top: 1px solid var(--ink); margin-top: 12px; }
+  .graph h3 { margin: 0 0 4px; font-size: 13px; font-weight: 400; font-style: italic; color: var(--muted); }
+  .graph svg { display: block; width: 100%; height: 130px; overflow: visible; }
+  .graph svg text { font: italic 11px var(--serif); fill: var(--muted); }
+  .eqs { align-self: center; font-style: italic; font-size: 15px; line-height: 1.5; }
+  .eqs p { margin: 0 0 10px; text-wrap: pretty; }
+
+  /* ---------------------------------------------------------------- notes */
+  .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 56px; padding: 34px var(--gutter) 60px;
+           border-top: 1px solid var(--ink); max-width: 1320px; }
+  .notes h2 { font-size: 26px; letter-spacing: -.015em; margin: 34px 0 10px; line-height: 1.15; }
+  .notes h2:first-child { margin-top: 0; }
+  .notes h3 { font-size: 18px; margin: 24px 0 6px; }
+  .notes p, .notes li, .notes dd { max-width: 68ch; }
+  .notes ul, .notes ol { margin: 0; padding-left: 1.2em; }
+  .notes li { margin: 6px 0; }
+  .notes li::marker { color: var(--accent); }
+  .inputs { font-size: 14px; font-style: italic; color: var(--muted); margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 400; font-style: italic; color: var(--muted); border-bottom-color: var(--ink); }
+  td.v { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums lining-nums; }
+  td.how { color: var(--ink-2); font-size: 14px; font-style: italic; }
+  tr.verdict td { color: var(--accent); font-weight: 700; }
+  dl { margin: 0; }
+  dl div { display: grid; grid-template-columns: 2.2em 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+  dl dt { font-weight: 700; color: var(--accent); }
+  dl dd { margin: 0; }
+  .ops div { grid-template-columns: 1fr; gap: 2px; padding: 12px 0; }
+  .ops dt { color: var(--ink); }
+  .ops dd { color: var(--ink-2); }
+  .aid { counter-reset: s; list-style: none; padding: 0 !important; }
+  .aid li { counter-increment: s; display: grid; grid-template-columns: 2em 1fr; }
+  .aid li::before { content: counter(s); font-weight: 700; color: var(--accent); }
+  .disclaimer { font-size: 14px; font-style: italic; color: var(--ink-2); padding: 10px 14px; background: var(--accent-wash); margin: 0 0 18px; }
+  footer { padding: 20px var(--gutter) 40px; font-size: 13px; font-style: italic; color: var(--muted); border-top: 1px solid var(--rule); }
+
+  /* ---------------------------------------------------------------- phone */
+  @media (max-width: 860px) {
+    .mast { padding-top: 10px; }
+    .brand { font-size: 20px; }
+    .brand i { display: none; }
+    .sos { font-size: 13px; }
+    .tabs { gap: 20px; margin-top: 4px; }
+    .tabs button { font-size: 15px; }
+    .theatre { padding-top: 12px; }
+    .views { display: block; position: relative; height: auto; aspect-ratio: 4 / 5; }
+    .live { position: absolute; inset: 0; }
+    .film { position: absolute; z-index: 3; right: 10px; bottom: 10px; width: 30%; aspect-ratio: 9 / 16;
+            box-shadow: 0 6px 18px #1c1c2233; transition: all .45s var(--ease); }
+    .film .tag, .film .state { display: none; }
+    .views.swapped .film { inset: 0; width: auto; aspect-ratio: auto; box-shadow: none; z-index: 1; }
+    .views.swapped .live { inset: auto 10px 10px auto; width: 36%; aspect-ratio: 3 / 4; z-index: 3; box-shadow: 0 6px 18px #1c1c2233; }
+    .views.swapped .live .read, .views.swapped .live .caption, .views.swapped .live .hint, .views.swapped .callouts { display: none; }
+    .swap { display: grid; place-items: center; position: absolute; z-index: 4; width: 44px; height: 44px; right: 10px; bottom: 10px;
+            background: var(--paper); border: 1px solid var(--ink); border-radius: 50%; cursor: pointer;
+            transform: translate(8px, 8px) scale(.78); }
+    .swap svg { width: 18px; height: 18px; }
+    .live .tag, .hint { display: none; }
+    .read { padding: 8px 10px 0; }
+    .hud1 .v { font-size: 18px; } .hud2, .read .clock { font-size: 12px; } .hud1 small { display: none; }
+    .hud1 .v, .hud2, .read .clock { white-space: nowrap; }
+    .caption { top: 52px; } .caption p { font-size: 13px; }
+    .transport { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .tclock { grid-column: 1 / -1; grid-row: 2; font-size: 14px; }
+    .readings { grid-template-columns: 1fr; gap: 18px; }
+    .notes { grid-template-columns: 1fr; padding-top: 24px; }
+    .notes .col + .col h2:first-child { margin-top: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mast-top">
+    <h1 class="brand">Accident Lab <i>physics, engineering and the trauma surgeon's view</i></h1>
+    <span class="sos">In an emergency call <b>911 · 112 · 999</b> first.</span>
+  </div>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Accident"></nav>
+</header>
+
+<main>
+<section class="theatre" aria-label="Simulation">
+  <div class="views" id="views">
+    <figure class="film" id="film" data-state="loading">
+      <video id="video" muted playsinline preload="auto" aria-label="Rendered film of the accident"></video>
+      <div class="state" id="filmState">Loading the film…</div>
+      <figcaption class="tag">Blender film</figcaption>
+    </figure>
+    <div class="live" id="live">
+      <div class="read" aria-live="off">
+        <div><div class="clock num" id="clock">t = 0.000 s</div><span class="badge" id="badge">×1/13</span></div>
+        <div class="hud1"><div class="v num" id="hud1"></div><small id="hud1note"></small></div>
+        <div class="hud2 num" id="hud2"></div>
+      </div>
+      <div class="caption" id="caption"><h2 id="capTitle"></h2><p id="capSub"></p></div>
+      <svg class="callouts" id="callouts" aria-hidden="true"></svg>
+      <span class="tag">Live 3D · same keyframes</span>
+      <span class="hint" id="hint">Drag to orbit · pinch or ⌘ + scroll to zoom</span>
+    </div>
+    <button class="swap" id="swap" aria-label="Swap film and 3D view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 3 8l4 4M3 8h13M17 20l4-4-4-4M21 16H8"/></svg>
+    </button>
+  </div>
+
+  <div class="transport">
+    <button class="play" id="play" aria-label="Pause">
+      <svg id="icoPause" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.4" height="12"/><rect x="9.6" y="2" width="3.4" height="12"/></svg>
+      <svg id="icoPlay" viewBox="0 0 16 16" fill="currentColor" hidden><path d="M4 2v12l10-6z"/></svg>
+    </button>
+    <div class="tclock num" id="tclock"></div>
+    <div class="track" id="track">
+      <div class="rail"></div><div id="marks"></div><div class="done" id="done"></div><div class="head" id="head"></div>
+      <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="Timeline">
+      <div class="focus"></div>
+    </div>
+    <div class="speed" role="group" aria-label="Playback speed">
+      <button data-rate="0.5" aria-pressed="false">½×</button><button data-rate="1" aria-pressed="true">1×</button>
+    </div>
+  </div>
+  <p class="note" id="note"></p>
+</section>
+
+<section class="readings" aria-label="Live readings">
+  <div class="graph" id="g0"></div>
+  <div class="graph" id="g1"></div>
+  <div class="eqs" id="eqs"></div>
+</section>
+
+<section class="notes" id="notes"></section>
+</main>
+<footer>A learning project. Every number is computed in <i>lab/physics.py</i>, and the film and the live scene share its keyframes. The surgical notes describe what trained hospital teams do; they are not instructions.</footer>
+
+<script src="data.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const DATA = window.SIM_DATA;
+const $ = id => document.getElementById(id);
+const FPS = 24, HOLD = Math.floor(1.5 * FPS);
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// The film's palette (blender/render_scenario.py), so both views read as one drawing.
+const C = { paper: 0xf6f5f2, clay: 0xecebe8, clayDark: 0xcdcdcb, road: 0xe2e2e0, ink: 0x1c1c22, tyre: 0x787878,
+            accent: 0xb01630, green: 0x1e7846, amber: 0xd68c14, glass: 0xd6dce2, sea: 0xcee0e8, rip: 0xaac6d4, sand: 0xf0e8d6 };
+const CSSC = { accent: "#b01630", ink: "#1c1c22", green: "#1e7846", amber: "#b4720c", muted: "#6c6c74" };
+
+// ---------------------------------------------------------------- renderer
+const live = $("live");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+live.prepend(renderer.domElement);
+const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.addEventListener("start", () => { $("hint").classList.add("gone"); userOrbit = true; });
+// A plain wheel scrolls the page; zoom needs ctrl/⌘ (trackpad pinch sends ctrlKey). Touch pinch is unaffected.
+live.addEventListener("wheel", e => { if (!e.ctrlKey && !e.metaKey) e.stopImmediatePropagation(); }, { capture: true });
+
+let scene, world, actors = {}, extras = [], current, followName = null, userOrbit = false;
+const inkLine = new THREE.LineBasicMaterial({ color: C.ink });
+const inkHull = new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide });
+
+function newScene() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(C.paper);
+  scene.fog = new THREE.Fog(C.paper, 70, 320);
+  world = new THREE.Group(); world.rotation.x = -Math.PI / 2; scene.add(world);   // physics is Z-up, like Blender
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb8b8b4, 2.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+  sun.position.set(-18, 40, 22); sun.castShadow = true;
+  Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40 });
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.radius = 4; sun.shadow.bias = -0.0005;
+  scene.add(sun);
+  actors = {}; extras = []; userOrbit = false;
+}
+const mat = (c = C.clay, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
+const add = (m, parent, x, y, z) => { m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; parent.add(m); return m; };
+const box = (sx, sy, sz, m, x = 0, y = 0, z = 0, p = world) => add(new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), m), p, x, y, z);
+function cyl(r, h, m, x, y, z, p = world, hull = true) {
+  const c = add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), m), p, x, y, z);
+  c.rotation.x = Math.PI / 2; if (hull) c.userData.hull = r; return c;
+}
+function sphere(r, m, x, y, z, p = world) {
+  const s = add(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), m), p, x, y, z); s.userData.hull = r; return s;
+}
+function ground(w, d, c, z = 0, x = 0, y = 0) {
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat(c)); g.position.set(x, y, z);
+  g.receiveShadow = true; g.userData.noInk = true; world.add(g); return g;
+}
+// Ink: hard edges as hairlines, round parts get a thin back-face hull so their silhouette is drawn.
+function inkify() {
+  const meshes = []; world.traverse(o => { if (o.isMesh && !o.userData.noInk && !o.material.transparent) meshes.push(o); });
+  for (const m of meshes) {
+    if (m.userData.hull) {
+      const h = new THREE.Mesh(m.geometry, inkHull);
+      h.scale.setScalar(1 + Math.min(.08, .006 / m.userData.hull)); h.userData.noInk = true; m.add(h);
+    } else {
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 28), inkLine));
+    }
+  }
+}
+// The crash dummy from the film: clay body, crimson cap. Burned regions turn crimson.
+function dummy(burned = []) {
+  const g = new THREE.Group(); g.rotation.order = "ZYX"; world.add(g);
+  const pick = part => burned.includes(part) ? mat(C.accent) : mat(C.clay);
+  cyl(.07, .84, pick("left_leg"), 0, .1, .44, g);
+  cyl(.07, .84, pick("right_leg"), 0, -.1, .44, g);
+  box(.26, .3, .1, mat(C.clayDark), 0, 0, .9, g);
+  box(.22, .4, .5, pick("front_torso"), 0, 0, 1.17, g);
+  for (const [s, part] of [[1, "left_arm"], [-1, "right_arm"]]) cyl(.05, .62, pick(part), 0, .27 * s, 1.13, g);
+  sphere(.05, mat(C.clayDark), 0, .27, 1.45, g); sphere(.05, mat(C.clayDark), 0, -.27, 1.45, g);
+  cyl(.04, .1, mat(C.clayDark), 0, 0, 1.47, g, false);
+  const head = sphere(.115, pick("head"), 0, 0, 1.62, g); head.scale.set(1, .92, 1.1);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(.122, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.2), mat(C.accent));
+  cap.rotation.x = Math.PI / 2; add(cap, g, 0, 0, 1.65); cap.userData.hull = .12;
+  return g;
+}
+function label(text, x, y, z, size = 1) {
+  const c = document.createElement("canvas"), ctx = c.getContext("2d");
+  c.width = 1024; c.height = 128; ctx.font = "italic 60px Georgia"; ctx.fillStyle = "#1c1c22";
+  ctx.textAlign = "center"; ctx.fillText(text, 512, 84);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  s.scale.set(8 * size, size, 1); s.position.set(x, y, z); world.add(s); return s;
+}
+function streetBlock(y, n = 7) {
+  for (let i = 0; i < n; i++) {
+    const w = 9 + (i % 3) * 2, h = 9 + ((i * 7) % 5) * 2.4, x = -40 + i * 13;
+    const b = box(w, 7, h, mat(C.clay), x, y, h / 2);
+    for (let z = 2.2; z < h - 1; z += 3) for (let k = -w / 2 + 1.6; k < w / 2 - 1; k += 2.6)
+      box(1.3, .05, 1.7, mat(C.glass), x + k, y - 3.52, z);
+    b.castShadow = false;
+  }
+}
+
+// ---------------------------------------------------------------- scene builders
+const BUILD = {
+  pedestrian() {
+    ground(400, 400, C.paper, -.02);
+    ground(160, 9, C.road);
+    ground(160, 4, C.clay, .005, 0, 6.5); ground(160, 4, C.clay, .005, 0, -6.5);
+    box(160, .25, .16, mat(C.clayDark), 0, 4.5, .08); box(160, .25, .16, mat(C.clayDark), 0, -4.5, .08);
+    for (let i = 0; i < 8; i++) box(.5, 3.6, .01, mat(C.paper), -2 + i * 1, 0, .006);   // zebra across the road
+    streetBlock(13);
+    const car = new THREE.Group(); world.add(car);
+    box(4.5, 1.84, .62, mat(C.clay), 0, 0, .62, car);
+    box(1.0, 1.8, .14, mat(C.clay), 1.75, 0, .98, car);
+    box(2.6, 1.7, .62, mat(C.clay), -.55, 0, 1.24, car);
+    box(.05, 1.5, .5, mat(C.glass), .76, 0, 1.24, car).rotation.y = -.55;
+    box(2.2, 1.72, .42, mat(C.glass), -.6, 0, 1.28, car);
+    box(.06, 1.2, .18, mat(C.ink), 2.25, 0, .52, car);
+    for (const wx of [1.45, -1.45]) for (const wy of [.86, -.86]) {
+      cyl(.36, .26, mat(C.tyre), wx, wy, .36, car);
+      cyl(.2, .27, mat(C.clay), wx, wy, .36, car, false);
+    }
+    actors.car = car; actors.victim = dummy();
+    followName = "victim";
+    camera.position.set(6, 2.4, 9.5);
+    return "The car brakes too late at 50 km/h. Watch the bumper take the legs, the head strike the windscreen, then the second impact on the road. Crimson bands on the timeline are the slow-motion windows.";
+  },
+  drowning(s) {
+    const rip = s.anim.rip;
+    ground(400, 400, C.paper, -.08);
+    ground(300, 150, C.sea, -.05, 0, 75);
+    ground(300, 40, C.sand, 0, 0, -20);
+    ground(rip.half_width * 2, rip.length, C.rip, -.03, 0, rip.length / 2);
+    for (let x = -96; x <= 96; x += 9) if (Math.abs(x) > rip.half_width + 2) box(6, .5, .06, mat(C.paper), x, 25, 0);
+    for (let y = 10; y < rip.length; y += 14) {
+      const a = new THREE.Mesh(new THREE.ConeGeometry(1.1, 3.4, 3), mat(C.accent));
+      a.position.set(0, y, .3); a.userData.noInk = true; world.add(a); extras.push({ obj: a, y0: y, len: rip.length });
+    }
+    const cols = { swimmer_fight: C.accent, swimmer_parallel: C.green, swimmer_float: C.amber };
+    for (const [n, c] of Object.entries(cols)) {
+      const g = new THREE.Group(); world.add(g);
+      sphere(1.0, mat(c), 0, 0, .3, g);
+      actors[n] = g;
+    }
+    label("out to sea  ↑", 0, rip.length + 6, 2, 2);
+    followName = null;
+    camera.position.set(0, 120, 70); controls.target.set(0, 0, -30);
+    return "Seen from above at 8× speed. <b style='color:#b01630'>Red</b> swims straight for the beach, <b style='color:#1e7846'>green</b> swims parallel to it first, <b style='color:#b4720c'>amber</b> floats and waves.";
+  },
+  fall(s) {
+    const h = s.anim.building_height;
+    ground(400, 400, C.paper, -.02);
+    ground(60, 60, C.road);
+    box(8, 12, h, mat(C.clay), -4, 0, h / 2);
+    for (let z = 1; z < h; z += 3) for (let y = -4; y <= 4; y += 4) box(.05, 1.6, 1.6, mat(C.glass), .02, y, z + .4);
+    box(1.4, 12, .12, mat(C.clayDark), .7, 0, h - .06);
+    actors.victim = dummy();
+    followName = "victim";
+    camera.position.set(12, h * .5, 13);
+    return `A fall from ${h} m onto concrete. The impact speed comes from v = √(2gh); how hard the body stops depends on how far it travels while stopping.`;
+  },
+  electrocution(s) {
+    ground(400, 400, C.paper, -.02);
+    const puddle = new THREE.Mesh(new THREE.CircleGeometry(2.6, 48), mat(C.sea));
+    puddle.scale.set(1.5, 1, 1); puddle.position.set(.2, 0, .004); puddle.receiveShadow = true; puddle.userData.noInk = true; world.add(puddle);
+    cyl(.16, 8, mat(C.clayDark), 2.5, 1.5, 4, world, false);
+    const p0 = new THREE.Vector3(2.5, 1.5, 7.6), p1 = new THREE.Vector3(-.02, .3, .84);
+    const wire = new THREE.Mesh(new THREE.CylinderGeometry(.018, .018, p0.distanceTo(p1), 8), mat(C.ink));
+    wire.position.copy(p0.clone().add(p1).multiplyScalar(.5));
+    wire.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().sub(p0).normalize());
+    wire.userData.noInk = true; world.add(wire);
+    const arc = new THREE.Mesh(new THREE.IcosahedronGeometry(.13, 0), new THREE.MeshBasicMaterial({ color: 0x3d7fd6 }));
+    arc.position.copy(p1); arc.userData.noInk = true; world.add(arc);
+    const glow = new THREE.PointLight(0x7fb4ff, 0, 6); glow.position.copy(p1); world.add(glow);
+    extras.push({ arc, glow, window: s.anim.shock_window });
+    actors.victim = dummy();
+    followName = "victim";
+    camera.position.set(4.6, 2.2, 5.6);
+    return "A downed line over wet ground. Above about 15 mA the forearm muscles lock and the hand cannot let go. Never touch someone who is still in contact.";
+  },
+  burns(s) {
+    ground(400, 400, C.paper, -.02);
+    ground(20, 12, C.clay);
+    box(20, .2, 3.2, mat(C.clay), 0, 6, 1.6);
+    box(3, 1.1, .5, mat(C.clayDark), -5, 4.3, .25); box(3, .3, .8, mat(C.clayDark), -5, 4.9, .65);
+    const fireMat = new THREE.MeshBasicMaterial({ color: 0xe0701a, transparent: true, opacity: .55, depthWrite: false });
+    for (let i = 0; i < 5; i++) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(.3, 1.4, 10), fireMat);
+      c.rotation.x = Math.PI / 2; c.position.set(-6 + i * .6, 4.2, 1.1 + (i % 2) * .3); world.add(c);
+      extras.push({ flame: c });
+    }
+    const fl = new THREE.PointLight(0xffa060, 20, 14); fl.position.set(-5, 3.5, 1.6); world.add(fl);
+    extras.push({ flick: fl });
+    const smoke = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), new THREE.MeshBasicMaterial({ color: 0x8a8a88, transparent: true, opacity: .35, depthWrite: false }));
+    smoke.position.set(0, 0, 3.1); world.add(smoke);
+    const v = dummy(s.anim.burned_parts);
+    const bodyFire = new THREE.Mesh(new THREE.ConeGeometry(.35, 1.6, 10), fireMat);
+    bodyFire.rotation.x = Math.PI / 2; bodyFire.position.set(0, 0, 1.4); v.add(bodyFire);
+    extras.push({ bodyFire });
+    actors.victim = v; followName = "victim";
+    camera.position.set(3, 2.6, 8);
+    return "Clothes catch fire. Running for the first 3 s fans the flames; then <b>stop, drop and roll</b> smothers them. Burned regions turn crimson.";
+  },
+};
+
+// ---------------------------------------------------------------- one timeline
+// The film's frame f shows sim time times[f]: the same rule render_scenario.py uses to stretch slow motion.
+function buildTimeline(story, duration) {
+  const base = story.speed || 1, slow = story.slowmo || [];
+  const rate = t => { for (const [a, b, r] of slow) if (a <= t && t < b) return r; return base; };
+  const times = []; let t = 0;
+  while (t <= duration) { times.push(t); t += rate(t) / FPS; }
+  for (let i = 0; i < HOLD; i++) times.push(duration);
+  return { times, rate, base, filmDur: times.length / FPS };
+}
+const simAt = ft => {
+  const T = current.tl.times, x = Math.max(0, Math.min(T.length - 1, ft * FPS)), i = Math.floor(x), j = Math.min(T.length - 1, i + 1);
+  return T[i] + (T[j] - T[i]) * (x - i);
+};
+const filmAt = st => {   // first film time showing sim time st
+  const T = current.tl.times; let lo = 0, hi = T.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (T[m] < st) lo = m + 1; else hi = m; }
+  return lo / FPS;
+};
+function sampleRows(rows, time) {   // rows [[t, ...]] sorted by t; returns the interpolated row
+  if (time <= rows[0][0]) return rows[0];
+  const last = rows[rows.length - 1]; if (time >= last[0]) return last;
+  let lo = 0, hi = rows.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (rows[m][0] <= time) lo = m; else hi = m; }
+  const a = rows[lo], b = rows[hi], k = (time - a[0]) / (b[0] - a[0] || 1);
+  return a.map((v, j) => v + (b[j] - v) * k);
+}
+const seriesAt = (name, t) => sampleRows(current.story.series[name], t)[1];
+function pyFmt(spec, v) {
+  const m = /\{:(\+)?\.(\d+)f\}/.exec(spec || "{:.1f}"); const s = v.toFixed(m ? +m[2] : 1);
+  return (m && m[1] && v >= 0 ? "+" : "") + s.replace("-", "−");
+}
+
+// ---------------------------------------------------------------- per-frame
+const video = $("video"), film = $("film");
+let clock = 0, playing = !REDUCED, rate = 1, lastCap = -1, lastSlow = null;
+const tmp = new THREE.Vector3();
+
+function apply(t) {
+  for (const [name, obj] of Object.entries(actors)) {
+    const r = sampleRows(current.anim.actors[name], t);
+    obj.position.set(r[1], r[2], r[3]);
+    obj.rotation.order = "ZYX";             // Blender XYZ Euler == three.js ZYX
+    obj.rotation.set(r[4], r[5], r[6]);
+  }
+  for (const e of extras) {
+    if (e.arc) { const on = t > e.window[0] && t < e.window[1];
+      e.arc.visible = on; e.arc.rotation.z = Math.random() * 6; e.glow.intensity = on ? 6 + 6 * Math.random() : 0; }
+    if (e.flame) e.flame.scale.setScalar(.85 + .3 * Math.random());
+    if (e.flick) e.flick.intensity = 16 + 8 * Math.random();
+    if (e.bodyFire) { const s = t < 3 ? 1 + t * .15 : Math.max(0, 1.45 - (t - 3) * .6);
+      e.bodyFire.scale.setScalar(s * (.85 + .3 * Math.random())); e.bodyFire.visible = s > .02; }
+    if (e.len) e.obj.position.y = e.y0 + ((t * 1.5) % 14);
+  }
+  if (followName && !userOrbit) {
+    const p = actors[followName].getWorldPosition(tmp);
+    controls.target.lerp(p.add(new THREE.Vector3(0, .8, 0)), .12);
+  }
+}
+
+function hud(t, ft) {
+  const st = current.story, [h1, h2] = st.hud;
+  $("clock").textContent = `t = ${t.toFixed(3)} s`;
+  $("hud1").textContent = `${h1.sym} = ${pyFmt(h1.fmt, seriesAt(h1.series, t))} ${h1.unit}`;
+  $("hud2").textContent = `${h2.sym} = ${pyFmt(h2.fmt, seriesAt(h2.series, t))} ${h2.unit}`;
+  const r = ft >= current.tl.filmDur - HOLD / FPS ? null : current.tl.rate(t);
+  const slow = r === null ? "" : r < 1 ? `×1/${Math.round(1 / r)}` : r > 1 ? `×${+r.toFixed(1)}` : "";
+  if (slow !== lastSlow) { $("badge").textContent = slow || "×1"; $("badge").classList.toggle("on", !!slow); lastSlow = slow; }
+  let ci = 0; st.captions.forEach((c, i) => { if (t >= c[0] - 1e-6) ci = i; });
+  if (ci !== lastCap) {
+    const [, title, sub] = st.captions[ci], cap = $("caption");
+    $("capTitle").textContent = title; $("capSub").textContent = sub;
+    cap.classList.remove("flip"); void cap.offsetWidth; cap.classList.add("flip"); lastCap = ci;
+  }
+  $("tclock").innerHTML = `t = ${t.toFixed(2)} s <i>of ${current.anim.duration.toFixed(1)} s</i>`;
+  const f = ft / current.tl.filmDur * 100;
+  $("head").style.left = f + "%"; $("done").style.width = f + "%";
+  if (document.activeElement !== $("scrub")) $("scrub").value = Math.round(f * 10);
+  for (const g of graphs) g.cursor(t);
+}
+
+// Leader-line callouts, re-projected every frame so they stay attached while you orbit.
+function callouts(t) {
+  const svg = $("callouts"), w = live.clientWidth, h = live.clientHeight;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  scene.updateMatrixWorld();
+  let out = ""; const used = [];
+  for (const [t0, t1, actor, p, text] of current.story.callouts) {
+    if (t < t0 || t > t1) continue;
+    tmp.set(p[0], p[1], p[2]);
+    (actor ? actors[actor] : world).localToWorld(tmp);
+    tmp.project(camera);
+    if (tmp.z > 1) continue;
+    const x = (tmp.x + 1) / 2 * w, y = (1 - tmp.y) / 2 * h;
+    const tw = String(text).length * 7 + 24;                     // rough italic width at 14px
+    let side = x > w / 2 ? 1 : -1;
+    if (side > 0 && x + 40 + tw > w) side = -1; else if (side < 0 && x - 40 - tw < 0) side = 1;
+    let lx = x + side * Math.min(110, w * .16);
+    lx = side > 0 ? Math.min(lx, w - tw) : Math.max(lx, tw);
+    let ly = Math.max(140, y - 56);
+    while (used.some(u => Math.abs(u - ly) < 24)) ly += 24;      // stack labels that would collide
+    used.push(ly);
+    const esc = String(text).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    out += `<polyline points="${x},${y} ${lx},${ly} ${lx + side * 10},${ly}" fill="none" stroke="#1c1c22" stroke-width="1"/>
+      <circle cx="${x}" cy="${y}" r="4.5" fill="#f6f5f2" stroke="#b01630" stroke-width="1.6"/>
+      <text x="${lx + side * 14}" y="${ly + 4}" text-anchor="${side > 0 ? "start" : "end"}">${esc}</text>`;
+  }
+  svg.innerHTML = out;
+}
+
+// ---------------------------------------------------------------- graphs (same series as the film's)
+let graphs = [];
+function buildGraph(el, spec) {
+  const W = 300, H = 130, pad = { l: 30, r: 8, t: 8, b: 18 };
+  const dur = current.anim.duration;
+  const lines = spec.lines.map(([name, lab, col]) => ({ rows: current.story.series[name], lab, col: CSSC[col] || CSSC.ink, name }));
+  let lo = 0, hi = 0;
+  for (const l of lines) for (const [, v] of l.rows) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  for (const [v] of spec.refs || []) hi = Math.max(hi, v);
+  hi = hi === lo ? lo + 1 : hi + (hi - lo) * .08;
+  const X = t => pad.l + t / dur * (W - pad.l - pad.r), Y = v => H - pad.b - (v - lo) / (hi - lo) * (H - pad.t - pad.b);
+  const tick = v => Math.abs(v) >= 100 ? Math.round(v) : +v.toFixed(1);
+  let svg = `<line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${H - pad.b}" stroke="#1c1c22"/>
+    <line x1="${pad.l}" y1="${Y(Math.max(lo, 0))}" x2="${W - pad.r}" y2="${Y(Math.max(lo, 0))}" stroke="#1c1c22"/>
+    <text x="${pad.l - 4}" y="${pad.t + 8}" text-anchor="end">${tick(hi)}</text>
+    <text x="${pad.l - 4}" y="${H - pad.b}" text-anchor="end">${tick(lo)}</text>
+    <text x="${W - pad.r}" y="${H - 4}" text-anchor="end">${dur.toFixed(1)} s</text>`;
+  for (const [v, lab] of spec.refs || []) svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#6c6c74" stroke-dasharray="3 3"/>
+    <text x="${W - pad.r}" y="${Y(v) - 4}" text-anchor="end">${lab}</text>`;
+  const step = Math.max(1, Math.floor(lines[0].rows.length / 400));
+  lines.forEach((l, i) => {
+    const pts = l.rows.filter((_, k) => k % step === 0 || k === l.rows.length - 1).map(([t, v]) => `${X(t).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
+    svg += `<polyline points="${pts}" fill="none" stroke="${l.col}" stroke-width="1.8" stroke-linejoin="round"/>`;
+    if (lines.length > 1) svg += `<text x="${W - pad.r}" y="${pad.t + 10 + i * 13}" text-anchor="end" style="fill:${l.col}">— ${l.lab}</text>`;
+  });
+  svg += `<line class="cur" y1="${pad.t}" y2="${H - pad.b}" stroke="#1c1c22" stroke-width="1"/>`;
+  lines.forEach(l => svg += `<circle class="dot" r="4" fill="${l.col}" stroke="#f6f5f2" stroke-width="1.5"/>`);
+  el.innerHTML = `<h3>${spec.title}</h3><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${spec.title} over time">${svg}</svg>`;
+  const cur = el.querySelector(".cur"), dots = [...el.querySelectorAll(".dot")];
+  return { cursor(t) {
+    const x = X(Math.min(t, dur)); cur.setAttribute("x1", x); cur.setAttribute("x2", x);
+    lines.forEach((l, i) => { dots[i].setAttribute("cx", x); dots[i].setAttribute("cy", Y(sampleRows(l.rows, t)[1])); });
+  } };
+}
+
+// ---------------------------------------------------------------- notes (the reading column)
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const fmt = v => typeof v === "number" ? (Math.abs(v) >= 100 ? Math.round(v).toLocaleString("en") : v.toFixed(2)) : v;
+function renderNotes(s) {
+  const m = s.medical, li = a => a.map(x => `<li>${esc(x)}</li>`).join("");
+  const res = s.results.map(([l, v, u, how]) => (v === 0 && u === "")
+    ? `<tr class="verdict"><td colspan="3">${esc(l)}: ${esc(how)}</td></tr>`
+    : `<tr><td>${esc(l)}</td><td class="v">${fmt(v)} ${esc(u)}</td><td class="how">${esc(how)}</td></tr>`).join("");
+  const tables = Object.entries(s.tables).map(([n, t]) =>
+    `<h3>${esc(n)}</h3><table><tr>${t.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr>` +
+    t.rows.map(r => `<tr>${r.map(c => `<td class="num">${esc(c)}</td>`).join("")}</tr>`).join("") + "</table>").join("");
+  $("notes").innerHTML = `
+    <div class="col">
+      <h2>The physics</h2>
+      <p class="inputs">Assumptions: ${Object.entries(s.inputs).map(([k, v]) => `${esc(k)} = ${esc(v)}`).join(" · ")}</p>
+      <table><tr><th>Quantity</th><th>Value</th><th>How</th></tr>${res}</table>
+      ${tables}
+    </div>
+    <div class="col">
+      <h2>What happens to the body</h2><ul>${li(m.mechanism)}</ul>
+      <h2>Prevention</h2><ul>${li(m.prevention)}</ul>
+      <h2>First aid: what a bystander does</h2>
+      <p class="disclaimer">Call 911 / 112 / 999 first, and make sure you are safe before you help.</p>
+      <ol class="aid">${li(m.first_aid)}</ol>
+      <h2>In the emergency department</h2>
+      <dl>${DATA.primary_survey.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+      <ul style="margin-top:14px">${li(m.hospital)}</ul>
+      <h2>The surgeon's view</h2>
+      <dl class="ops">${m.surgery.map(([n, d]) => `<div><dt>${esc(n)}</dt><dd>${esc(d)}</dd></div>`).join("")}</dl>
+    </div>`;
+}
+
+// ---------------------------------------------------------------- timeline marks
+function renderMarks() {
+  const tl = current.tl, D = tl.filmDur, pct = ft => (ft / D * 100).toFixed(3) + "%";
+  let html = "";
+  for (const [a, b] of current.story.slowmo || []) {
+    const fa = filmAt(a), fb = filmAt(Math.min(b, current.anim.duration));
+    html += `<div class="band" style="left:${pct(fa)};width:${pct(fb - fa)}" title="slow motion"></div>`;
+  }
+  html += `<div class="hold" style="width:${pct(HOLD / FPS)}"></div>`;
+  for (const [t, title] of current.story.captions.slice(1)) html += `<div class="tick" style="left:${pct(filmAt(t))}" title="${esc(title)}"></div>`;
+  $("marks").innerHTML = html;
+}
+
+// ---------------------------------------------------------------- wiring
+function setPlaying(p) {
+  playing = p;
+  $("icoPlay").hidden = p; $("icoPause").hidden = !p; $("play").setAttribute("aria-label", p ? "Pause" : "Play");
+  if (filmOk()) { if (p) video.play().catch(() => {}); else video.pause(); }
+}
+const filmOk = () => film.dataset.state === "ready";
+function seek(ft) {
+  clock = Math.max(0, Math.min(current.tl.filmDur - 1e-3, ft));
+  if (filmOk()) video.currentTime = clock;
+}
+
+function load(id) {
+  current = DATA.scenarios.find(s => s.id === id);
+  current.tl = buildTimeline(current.story, current.anim.duration);
+  newScene();
+  controls.target.set(0, 0, 0);
+  $("note").innerHTML = BUILD[id](current) + ` <span class="legend-band"></span> slow motion`;
+  inkify();
+  graphs = current.story.graphs.slice(0, 2).map((g, i) => buildGraph($("g" + i), g));
+  $("eqs").innerHTML = current.story.eqs.map(e => `<p>${esc(e)}</p>`).join("");
+  $("hud1note").textContent = current.story.hud[0].note || "";
+  renderNotes(current); renderMarks();
+  lastCap = -1; lastSlow = null; clock = 0;
+  film.dataset.state = "loading"; $("filmState").textContent = "Loading the film…";
+  video.src = `media/${id}.mp4`; video.playbackRate = rate; video.load();
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.id === id));
+  try { localStorage.setItem("accident-lab-tab", id); } catch {}
+  try { history.replaceState(null, "", "#" + id); } catch {}
+  resize(); setPlaying(playing);
+}
+video.addEventListener("loadeddata", () => {
+  film.dataset.state = "ready"; video.currentTime = clock; video.playbackRate = rate;
+  if (playing) video.play().catch(() => {});
+});
+video.addEventListener("error", () => {
+  film.dataset.state = "missing";
+  $("filmState").innerHTML = `The film for this scenario is not rendered yet; the live scene keeps time on its own.<code>blender -b --python blender/render_scenario.py -- ${current.id} --render</code>`;
+});
+video.addEventListener("ended", () => { seek(0); if (playing) video.play().catch(() => {}); });
+
+const tabs = $("tabs");
+for (const s of DATA.scenarios) {
+  const b = document.createElement("button"); b.textContent = s.title; b.dataset.id = s.id; b.setAttribute("role", "tab");
+  b.onclick = () => load(s.id); tabs.append(b);
+}
+tabs.addEventListener("keydown", e => {
+  if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+  const bs = [...tabs.children], i = bs.indexOf(document.activeElement); if (i < 0) return;
+  const n = bs[(i + (e.key === "ArrowRight" ? 1 : bs.length - 1)) % bs.length]; n.focus(); n.click();
+});
+addEventListener("hashchange", () => { const id = location.hash.slice(1); if (id !== current.id && BUILD[id]) load(id); });
+$("play").onclick = () => setPlaying(!playing);
+$("scrub").addEventListener("input", e => { seek(e.target.value / 1000 * current.tl.filmDur); if (playing) setPlaying(false); });
+document.querySelectorAll(".speed button").forEach(b => b.onclick = () => {
+  rate = +b.dataset.rate; video.playbackRate = rate;
+  document.querySelectorAll(".speed button").forEach(x => x.setAttribute("aria-pressed", x === b));
+});
+$("swap").onclick = () => { $("views").classList.toggle("swapped"); };
+addEventListener("keydown", e => {
+  if (e.target.closest("input, button, select, textarea")) return;
+  if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+  if (e.key === "ArrowRight" || e.key === "ArrowLeft") seek(clock + (e.key === "ArrowRight" ? 1 : -1) / FPS * (e.shiftKey ? 24 : 1));
+});
+
+function resize() {
+  const w = live.clientWidth, h = live.clientHeight; if (!w || !h) return;
+  renderer.setSize(w, h, false); camera.aspect = w / h;
+  camera.fov = camera.aspect < 1 ? 52 : 36;                       // a narrow phone frame needs a wider lens
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(live);
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (filmOk() && !video.seeking) clock = video.currentTime;          // the film is the master clock
+  else if (playing) { clock += dt * rate; if (clock >= current.tl.filmDur) clock = 0; }
+  const t = simAt(clock);
+  apply(t); controls.update(); renderer.render(scene, camera);
+  hud(t, clock); callouts(t);
+  requestAnimationFrame(loop);
+}
+let saved = location.hash.slice(1); if (!DATA.scenarios.some(s => s.id === saved)) { try { saved = localStorage.getItem("accident-lab-tab"); } catch {} }
+load(DATA.scenarios.some(s => s.id === saved) ? saved : "pedestrian");
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
