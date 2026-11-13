@@ -1,5 +1,14 @@
 # Accident Lab
 
+[![Live site](https://img.shields.io/badge/live%20site-yesjermo.github.io%2Faccident--lab-b01630?style=flat-square)](https://yesjermo.github.io/accident-lab/)
+[![Deploy](https://img.shields.io/github/actions/workflow/status/yesjermo/accident-lab/pages.yml?branch=main&style=flat-square&label=deploy)](https://github.com/yesjermo/accident-lab/actions/workflows/pages.yml)
+![Python](https://img.shields.io/badge/python-3%20·%20stdlib%20only-1c1c22?style=flat-square&logo=python&logoColor=white)
+![Three.js](https://img.shields.io/badge/three.js-0.160-1c1c22?style=flat-square&logo=threedotjs&logoColor=white)
+![Blender](https://img.shields.io/badge/blender-5.3-1c1c22?style=flat-square&logo=blender&logoColor=white)
+![Scenarios](https://img.shields.io/badge/scenarios-5-1c1c22?style=flat-square)
+
+**Try it in the browser: [yesjermo.github.io/accident-lab](https://yesjermo.github.io/accident-lab/)**. Pick an accident and watch the Blender film and the live 3D scene play in sync, then read the physics and the medical notes under it.
+
 A study project that walks through five accidents three ways:
 
 1. **Physics & engineering**: momentum, energy, deceleration, Head Injury Criterion, fluid drag, buoyancy, Ohm's law, Joule heating, heat conduction.
