@@ -98,33 +98,37 @@ Every scenario below lands in the same primary survey, done in this order becaus
 - `rip_speed_ms` = 1.5
 - `swim_speed_ms` = 1.0
 - `rip_width_m` = 30
-- `start_offshore_m` = 40
-- `hard_swim_endurance_s` = 150
-- `water_temp_c` = 15
+- `start_offshore_m` = 20
+- `hard_swim_endurance_s` = 100
+- `water_temp_c` = 18
+- `mass_kg` = 70
 
 ### Physics and engineering
 
 | Quantity | Value | How |
 |---|---|---|
-| Net speed swimming straight at the beach | **-0.50 m/s** | v_net = v_swim − v_rip. A negative number means you go backwards |
-| Metabolic power to swim at 1 m/s | **269 W** | P = ½ρCdAv³ / efficiency (~8%) |
-| Time to escape sideways | **17.00 s** | Rip width / 2 ÷ swim speed |
-| Buoyant force with full lungs | **50.35 N** | (ρ_water − ρ_body)·V·g. Positive means you float |
-| Body density with full lungs | **955 kg/m³** | Sea water is 1025. Below that you float |
-| Body density after exhaling | **1,017 kg/m³** | Closer to water: panic and lost air make you sink |
-| Strategy A (fight) | exhausted at t = 150 s, then submerges |  |
-| Strategy B (swim parallel) | reaches the beach at t = 72 s |  |
-| Strategy C (float) | still afloat at 240 s, waving for rescue |  |
-| Expected survival time in water | **1.14 h** | Rough cold-water curve at 15 °C |
+| Your net speed swimming for the beach | **-0.50 m/s** | v_net = v_swim − v_rip. Negative: the rip wins |
+| Metabolic power to swim at 1 m/s | **269 W** | P = ½ρC_dAv³ / efficiency (~8%) |
+| Time until your arms give out | **100 s** | 100 s of hard swimming for an untrained adult |
+| Buoyancy with lungs at rest | **20.18 N** | (ρ_water·V − m)·g. Positive: you float |
+| Buoyancy with your whole head out | **-25.06 N** | the head's 4.5 L no longer helps: negative, you sink |
+| Buoyancy floating on your back, face out | **5.10 N** | only a third of the head out: still positive |
+| Buoyancy after breathing out and inhaling water | **-4.71 N** | residual lungs, ~1 L of water: you sink |
+| Sinking speed | **0.18 m/s** | terminal velocity: v = √(2|F| / ρC_dA) |
+| Time under water before rescue | **87.08 s** | brain injury starts after 4–6 min in warm water |
+| Unconscious after | **69.55 s** | SpO₂ below 60% (Severinghaus curve from falling PaO₂) |
+| If you fight the rip | exhausted at t = 100 s |  |
+| If you swim parallel to the beach | on the beach at t = 52 s |  |
+| If you float and wave | still floating at 5 min, waving: easy to spot and rescue |  |
 
 **Hypoxia timeline after going under**
 
 | Time | What happens in the body |
 |---|---|
-| 0–60 s | Breath-hold. CO₂ rises. Panic |
-| 60–90 s | Involuntary gasp: water enters the airway. Laryngospasm |
-| ~2 min | Unconscious. SpO₂ < 60% |
-| 3–4 min | Bradycardia, then cardiac arrest (PEA/asystole) |
+| 0–60 s | Breath-hold. CO₂ rises, panic |
+| 20–60 s | Involuntary gasp: water enters the airway. Laryngospasm |
+| ~1–2 min | Unconscious. SpO₂ < 60% |
+| 3–4 min | Slow heart, then cardiac arrest (PEA/asystole) |
 | 4–6 min | Irreversible brain injury begins (warm water) |
 | > 30 min | Survival rare, except in ice-cold water (hypothermia protects the brain) |
 
@@ -132,6 +136,7 @@ Every scenario below lands in the same primary survey, done in this order becaus
 
 - Drowning is silent. Victims are upright, head back, mouth at water level, unable to call or wave (the 'instinctive drowning response').
 - Rip currents cause ~80% of surf-beach rescues. Swimmers exhaust themselves fighting them.
+- Underwater, the breath-hold holds until CO₂ forces an involuntary gasp. Water hits the larynx and it clamps shut (laryngospasm), then relaxes as oxygen runs out and water floods in.
 - Aspirated water washes out surfactant: alveoli collapse, then hypoxaemia, then cardiac arrest.
 - Cold shock (< 15 °C): an involuntary gasp and hyperventilation in the first minute can cause aspiration on its own.
 
@@ -140,6 +145,8 @@ Every scenario below lands in the same primary survey, done in this order becaus
 - Swim at lifeguarded beaches, between the flags.
 - Spot a rip: a calm, dark gap between breaking waves, foam or debris moving out to sea.
 - Caught in one: FLIP onto your back, FLOAT, FOLLOW. Swim parallel to the shore, never against the rip.
+- Floating on your back needs almost no effort: with only your face out, your lungs still give ~5 N of spare lift. Holding your whole head up costs ~25 N more than they give.
+- Raise an arm and shout while you still can. Once the instinctive drowning response starts, you can do neither.
 - Never swim alone or after alcohol. Fence pools. Supervise children within arm's reach.
 - Lifejackets in boats. Most boating deaths are people who weren't wearing one.
 
@@ -148,9 +155,10 @@ Every scenario below lands in the same primary survey, done in this order becaus
 1. Reach or throw, don't go. Hold out a pole or throw something that floats. Untrained rescuers often drown too.
 2. Call emergency services and a lifeguard.
 3. Once on land and not breathing: drowning CPR starts with 5 rescue breaths, then 30:2. The problem is oxygen, not the heart.
-4. Don't try to drain water from the lungs and don't do abdominal thrusts. It wastes time and causes vomiting.
-5. Breathing but unconscious: recovery position, keep them warm, watch them continuously.
-6. Everyone who inhaled water goes to hospital. Lung injury can worsen over 4–8 hours.
+4. Trained lifeguards start rescue breaths in the water during a long tow: every minute without oxygen counts.
+5. Don't try to drain water from the lungs and don't do abdominal thrusts. It wastes time and causes vomiting.
+6. Breathing but unconscious: recovery position, keep them warm, watch them continuously.
+7. Everyone who inhaled water goes to hospital. Lung injury can worsen over 4–8 hours.
 
 ### In the emergency department
 

@@ -81,12 +81,35 @@ def frames(s, step=1 / 600):
 for s in [f() for f in physics.ALL]:
     print(s["id"])
     actors = s["anim"]["actors"]
-    if s["id"] != "drowning":
+    if s["id"] == "drowning":
+        bed = s["anim"]["seabed"]
+
+        def bed_z(y):
+            for (ya, za), (yb, zb) in zip(bed, bed[1:]):
+                if y <= yb:
+                    return za + (zb - za) * max(0.0, (y - ya) / (yb - ya))
+            return bed[-1][1]
+        for who in ("you", "lifeguard"):
+            # rig body faces actor +y: body point (0, 0, h) stays (0, 0, h) in the actor frame.
+            # Legs folded back at the hips (kneeling) aren't straight below the body: skip them then.
+            hips = s["anim"]["joints"][who]["hip_L"]
+
+            def points(t):
+                folded = abs(interp(hips, t)[2]) > 0.3
+                return [(n, pr) for n, pr in BODY.items() if not (folded and n in ("knee", "foot"))]
+            worst = min((world(interp(actors[who], t), p)[2] - r - bed_z(world(interp(actors[who], t), p)[1]), t, name)
+                        for t in frames(s, 1 / 24) for name, (p, r) in points(t))
+            check(worst[0] > -0.03, f"{who} never inside the seabed (lowest {worst[0]:+.3f} m: {worst[2]} at t={worst[1]:.1f})")
+        caps = [c[0] for c in s["story"]["captions"]]
+        check(caps == sorted(caps), "captions in time order")
+    else:
         rows = actors["victim"]
         lowest = min((world(interp(rows, t), p)[2] - r, t, name)
                      for t in frames(s) for name, (p, r) in BODY.items())
         check(lowest[0] > -0.03, f"never below the ground (lowest {lowest[0]:+.3f} m: {lowest[2]} at t={lowest[1]:.3f})")
-    for t0, t1, _ in s["story"].get("slowmo", []):
+    for t0, t1, r in s["story"].get("slowmo", []):
+        if r > 1:                                  # a fast-forward window needs no extra keys
+            continue
         keys = sum(1 for r in next(iter(actors.values())) if t0 <= r[0] <= t1)
         check(keys >= (t1 - t0) * 300, f"slow motion {t0:.2f}-{t1:.2f} s has {keys} keys (needs one per film frame)")
 

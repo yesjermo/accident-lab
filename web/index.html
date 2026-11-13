@@ -438,6 +438,7 @@ function streetBlock(y, n = 7) {
 }
 
 // ---------------------------------------------------------------- scene builders
+const note_drowning = "You're 20 m out when a rip current takes you. Watch from the side, through a cut in the sea: you fight it, tire, go under, and a lifeguard brings you back. 12× speed, real time at the moments that matter, 30× for the long tow.";
 const BUILD = {
   pedestrian() {
     ground(400, 400, C.paper, -.02);
@@ -452,26 +453,27 @@ const BUILD = {
     return "The car brakes too late at 50 km/h. Watch the bumper take the legs, the head strike the windscreen, then the second impact on the road. Crimson bands on the timeline are the slow-motion windows.";
   },
   drowning(s) {
-    const rip = s.anim.rip;
-    ground(400, 400, C.paper, -.08);
-    ground(300, 150, C.sea, -.05, 0, 75);
-    ground(300, 40, C.sand, 0, 0, -20);
-    ground(rip.half_width * 2, rip.length, C.rip, -.03, 0, rip.length / 2);
-    for (let x = -96; x <= 96; x += 9) if (Math.abs(x) > rip.half_width + 2) box(6, .5, .06, mat(C.paper), x, 25, 0);
-    for (let y = 10; y < rip.length; y += 14) {
-      const a = new THREE.Mesh(new THREE.ConeGeometry(1.1, 3.4, 3), mat(C.accent));
-      a.position.set(0, y, .3); a.userData.noInk = true; world.add(a); extras.push({ obj: a, y0: y, len: rip.length });
+    // Backup scene (the Blender export is the real one): sea in cut-away, you and the lifeguard.
+    const rip = s.anim.rip, bed = s.anim.seabed;
+    ground(400, 400, C.paper, -6);
+    const sand = new THREE.Shape(bed.map(([y, z]) => new THREE.Vector2(y, z)).concat([new THREE.Vector2(bed.at(-1)[0], -6), new THREE.Vector2(bed[0][0], -6)]));
+    const sec = new THREE.ExtrudeGeometry(sand, { depth: 51, bevelEnabled: false });
+    sec.rotateX(Math.PI / 2); sec.rotateZ(Math.PI / 2); sec.translate(6, 0, 0);
+    add(new THREE.Mesh(sec, mat(C.sand)), world, 0, 0, 0);
+    ground(51, 160, C.sea, 0, -19.5, 80).material.side = THREE.DoubleSide;
+    for (let y = 12; y < rip.length; y += 12) {
+      const a = new THREE.Mesh(new THREE.ConeGeometry(1.0, 3.4, 3), mat(C.accent));
+      a.position.set(0, y, .05); a.userData.noInk = true; world.add(a);
     }
-    const cols = { swimmer_fight: C.accent, swimmer_parallel: C.green, swimmer_float: C.amber };
-    for (const [n, c] of Object.entries(cols)) {
-      const g = new THREE.Group(); world.add(g);
-      sphere(1.0, mat(c), 0, 0, .3, g);
-      actors[n] = g;
+    for (const [name, cap] of [["you", C.accent], ["lifeguard", C.amber]]) {
+      const g = new THREE.Group(); g.rotation.order = "ZYX"; world.add(g);
+      const d = dummy(); world.remove(d); d.rotation.z = Math.PI / 2; g.add(d);   // the rig faces the actor's +y
+      d.traverse(o => { if (o.isMesh && o.position.z > 1.68) o.material = mat(cap); });
+      actors[name] = g;
     }
-    label("out to sea  ↑", 0, rip.length + 6, 2, 2);
-    followName = null;
-    camera.position.set(0, 120, 70); controls.target.set(0, 0, -30);
-    return "Seen from above at 8× speed. <b style='color:#b01630'>Red</b> swims straight for the beach, <b style='color:#1e7846'>green</b> swims parallel to it first, <b style='color:#b4720c'>amber</b> floats and waves.";
+    followName = "you";
+    camera.position.set(16, 1, -30);
+    return note_drowning;
   },
   fall(s) {
     const h = s.anim.building_height;
