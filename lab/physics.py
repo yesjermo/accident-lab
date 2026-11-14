@@ -370,7 +370,14 @@ def mat_vec(m, v):
 # Where the rig's joints sit in its body frame (render_scenario.rig builds the same).
 RIG_JOINTS = {"shoulder_L": (0, 0.205, 1.4), "shoulder_R": (0, -0.205, 1.4), "hip_L": (0, 0.09, 0.93),
               "hip_R": (0, -0.09, 0.93), "neck": (0, 0, 1.47)}
-RIG_HAND = (0, -0.065, -0.6)                                       # palm, from the shoulder joint (right side)
+RIG_ELBOW = (0, -0.045, -0.3)                                      # right elbow, from the shoulder joint
+RIG_PALM = (0, -0.02, -0.3)                                        # right palm, from the elbow joint
+
+
+def rig_hand(pose, shoulder_rot, elbow_rot=(0, 0, 0)):
+    """World position of the right palm: shoulder joint → upper arm → elbow joint → forearm (forward kinematics)."""
+    local = tuple(a + b for a, b in zip(RIG_ELBOW, mat_vec(euler_matrix(*elbow_rot), RIG_PALM)))
+    return rig_point(pose, "shoulder_R", shoulder_rot, local)
 
 
 def rig_point(pose, joint, joint_rot, local):
@@ -1088,7 +1095,7 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
     rows_nb = unwrap(sample(neighbour, duration, dense=dense), (4, 5, 6))
     ts = [row[0] for row in rows_you]
     # where your palm actually is when you touch the line: the Blender line is drawn through this point
-    contact = rig_point(you(on), "shoulder_R", joints_you(on)["shoulder_R"], RIG_HAND)
+    contact = rig_hand(you(on), joints_you(on)["shoulder_R"], joints_you(on).get("elbow_R", (0, 0, 0)))
     line_end = (x_stop + 0.25, -0.55, 0.03)
 
     story = {
@@ -1408,4 +1415,245 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
     }
 
 
-ALL = [pedestrian, drowning, fall, electrocution, burns]
+# ---------------------------------------------------------------------------
+# 6. Choking: food in your airway
+# ---------------------------------------------------------------------------
+def choking(frc_l=2.4, trachea_cm2=2.5, hold_n=3.5, thrust_dv_l=(0.18, 0.22, 0.26, 0.32, 0.36)):
+    """You laugh with food in your mouth and inhale it. Your friend gives back blows, then abdominal thrusts.
+    x = along the table, y = toward the table (you face +y), z = up."""
+    P_atm = 101.3                                                  # kPa
+    A = trachea_cm2 * 1e-4                                         # m²
+
+    def thrust_dp(dv):                                             # Boyle: the blocked lungs are a closed box
+        return P_atm * dv / (frc_l - dv)
+
+    blow_dp = 3.0                                                  # a back blow: ~3 kPa spike
+    dps = [thrust_dp(dv) for dv in thrust_dv_l]
+    forces = [dp * 1000 * A for dp in dps]
+    n_out = next((i for i, f in enumerate(forces) if f > hold_n), None)
+    if n_out is None:
+        raise ValueError("no thrust beats the grip of the food with these numbers: this story needs one that does")
+
+    # --- timeline (real seconds) -------------------------------------------------
+    t_choke = 2.2
+    t_stand, t_sign = 3.4, 4.4
+    t_friend = 5.6                                                 # your friend gets round behind you
+    t_blows = 8.0
+    blow_dt = 0.8
+    t_wrap = t_blows + 5 * blow_dt + 0.4
+    t_thrusts = t_wrap + 1.0
+    thrust_dt = 0.85
+    thrust_times = [t_thrusts + i * thrust_dt for i in range(n_out + 1)]
+    t_out = thrust_times[-1] + 0.12
+    duration = t_out + 5.0
+    slowmo = [[t_choke - 0.25, t_choke + 0.35, 1 / 4], [t_out - 0.2, t_out + 0.5, 1 / 4]]
+    film_time = film_clock(slowmo, 1, duration)
+
+    def pulse(t, t0, width=0.12):
+        return max(0.0, 1 - abs(t - t0) / width)
+
+    def airway_dp(t):
+        p = sum(blow_dp * pulse(t, t_blows + i * blow_dt + 0.1, 0.08) for i in range(5))
+        p += sum(dp * pulse(t, tt + 0.1) for dp, tt in zip(dps, thrust_times))
+        return p
+
+    def lung_l(t):
+        if t < t_choke:                                            # breathing normally
+            return frc_l + 0.5 * (0.5 + 0.5 * math.sin(math.tau * t / 4))
+        if t < t_out:                                              # blocked: stuck near FRC, squeezed by each thrust
+            return frc_l - sum(dv * pulse(t, tt + 0.1) for dv, tt in zip(thrust_dv_l, thrust_times))
+        return frc_l + 1.6 * ease((t - t_out) / 0.8) - 0.9 * ease((t - t_out - 1.2) / 1.5)   # a huge gasp, then normal
+
+    def pao2(t):
+        if t < t_choke:
+            return 95.0
+        p_low = 95 * math.exp(-(min(t, t_out) - t_choke) / 55)     # no air in or out: the store runs down
+        return p_low if t < t_out else 95 + (p_low - 95) * math.exp(-(t - t_out) / 6)
+
+    def spo2(t):
+        p = pao2(t)
+        return 100 / (23400 / (p ** 3 + 150 * p) + 1)
+
+    # --- poses ---------------------------------------------------------------------
+    UP, FWD = (0, 0, 1), (0, 1, 0)
+    seat = (0.0, -0.85, 0.5)
+    stand = (0.0, -1.15, 0.93)
+    behind = (0.0, -1.7, 0.93)
+
+    def stand_hip(k):
+        """Hip height that keeps the feet on the floor while the legs swing from seated (−90°) to straight."""
+        return 0.93 * math.cos(math.pi / 2 * (1 - k)) + 0.04
+
+    def you(t):
+        if t < t_stand:                                            # sitting, eating, laughing
+            lean = -0.12 * pulse(t, t_choke - 0.2, 0.35) + 0.15 * pulse(t, t_choke + 0.4, 0.4)
+            return rig_pose(seat, FWD, norm(lerp(UP, FWD, lean) if lean > 0 else lerp(UP, (0, -1, 0), -lean)))
+        if t < t_sign:                                             # you jump up
+            k = ease((t - t_stand) / (t_sign - t_stand))
+            p = lerp(seat, stand, k)                               # hips high enough for the legs swinging down
+            return rig_pose((p[0], p[1], max(p[2], stand_hip(k))), FWD, UP)
+        if t < t_blows - 0.4:                                      # the choking sign: hands at your throat
+            jerk = 0.02 * math.sin(math.tau * 2.2 * film_time(t))
+            return rig_pose((stand[0], stand[1], stand[2] + jerk), FWD, norm(lerp(UP, FWD, 0.1)))
+        if t < t_wrap:                                             # bent forward for the back blows
+            k = ease((t - (t_blows - 0.4)) / 0.4)
+            hit = sum(pulse(t, t_blows + i * blow_dt + 0.1, 0.1) for i in range(5))
+            return rig_pose((stand[0], stand[1] + 0.03 * hit, stand[2]), FWD, norm(lerp(UP, FWD, 0.55 * k + 0.05 * hit)))
+        k = ease((t - t_wrap) / 0.5)                               # upright for the thrusts
+        jolt = sum(pulse(t, tt + 0.1) for tt in thrust_times)
+        cough = 0.25 * pulse(t, t_out + 0.2, 0.4)
+        return rig_pose((stand[0], stand[1], stand[2] + 0.04 * jolt), FWD, norm(lerp(lerp(UP, FWD, 0.55 * (1 - k) + 0.12), FWD, cough)))
+
+    def friend(t):
+        across = (0.0, 0.95, 0.5)
+        if t < t_sign:                                             # sitting across the table
+            return rig_pose(across, (0, -1, 0), UP)
+        if t < t_friend:                                           # up and round the table
+            k = ease((t - t_sign) / (t_friend - t_sign))
+            path = [(0.0, 0.95, 0.5), (0.0, 1.3, 0.93), (1.25, 0.6, 0.93), (1.25, -1.3, 0.93), behind]
+            seg = min(len(path) - 2, int(k * (len(path) - 1)))
+            kk = k * (len(path) - 1) - seg
+            p = lerp(path[seg], path[seg + 1], kk)
+            d = norm((path[seg + 1][0] - path[seg][0], path[seg + 1][1] - path[seg][1], 0.0001))
+            j = joints_friend(t)                                   # hips high enough for whichever leg reaches lowest
+            reach = max(math.cos(j[h][0]) * math.cos(j[h][1]) for h in ("hip_L", "hip_R"))
+            p = (p[0], p[1], max(p[2], 0.93 * reach + 0.04))
+            return rig_pose(p, turn((0, -1, 0), d, min(1, k * 4), (1, 0, 0)), UP)
+        if t < t_wrap:                                             # beside and behind you, one arm across your chest
+            k = ease((t - t_friend) / 0.6)
+            return rig_pose(lerp(behind, (0.35, -1.6, 0.93), k), turn(norm((-0.3, 1, 0)), FWD, 1 - k, (1, 0, 0)),
+                            norm(lerp(UP, FWD, 0.15 * k)))
+        k = ease((t - t_wrap) / 0.6)                               # right behind you, arms round your waist
+        pull = sum(pulse(t, tt + 0.08) for tt in thrust_times)
+        p = lerp((0.35, -1.6, 0.93), (0.0, -1.47, 0.93), k)
+        return rig_pose((p[0], p[1] - 0.05 * pull, p[2] + 0.04 * pull), FWD, norm(lerp(UP, FWD, 0.12 - 0.08 * pull)))
+
+    def joints_you(t):
+        ph = math.tau * film_time(t)
+        legs_sit = {"hip_L": (0, -math.pi / 2, 0), "hip_R": (0, -math.pi / 2, 0)}
+        if t < t_stand:                                            # fork to mouth and back
+            lift = 0.5 + 0.5 * math.sin(ph * 0.5) if t < t_choke else 0.2
+            return {**legs_sit, "shoulder_R": (-0.15, -0.5 - 0.7 * lift, 0), "elbow_R": (0, -1.6 * lift, 0),
+                    "shoulder_L": (0.15, -0.5, 0), "elbow_L": (0, -0.6, 0),
+                    "neck": (0, -0.45 * pulse(t, t_choke - 0.2, 0.35) + 0.2 * pulse(t, t_choke + 0.4, 0.4), 0)}
+        k = ease((t - t_stand) / (t_sign - t_stand)) if t < t_sign else 1.0
+        legs = {"hip_L": (0, -math.pi / 2 * (1 - k), 0), "hip_R": (0, -math.pi / 2 * (1 - k), 0)}
+        if t < t_blows - 0.4:                                      # both hands to the throat
+            # upper arm 0.9 rad forward-down puts the elbow at (0.24, −0.19) from the shoulder; the throat is at
+            # (0.08, 0.05), so the forearm must point (−0.55, 0.84): an elbow bend of −2.8 rad
+            return {**legs, "shoulder_L": (-0.5 * k, -0.9 * k, 0), "shoulder_R": (0.5 * k, -0.9 * k, 0),
+                    "elbow_L": (0, -2.8 * k, 0), "elbow_R": (0, -2.8 * k, 0), "neck": (0, 0.15 * k, 0)}
+        if t < t_wrap:                                             # leaning on your friend's arm, hands on the table edge
+            return {**legs, "shoulder_L": (0.1, -0.9, 0), "shoulder_R": (-0.1, -0.9, 0),
+                    "elbow_L": (0, -0.3, 0), "elbow_R": (0, -0.3, 0), "neck": (0, 0.3, 0)}
+        out = pulse(t, t_out + 0.2, 0.5)
+        return {**legs, "shoulder_L": (-0.2, -0.6 - 0.4 * out, 0), "shoulder_R": (0.2, -0.6 - 0.4 * out, 0),
+                "elbow_L": (0, -1.2, 0), "elbow_R": (0, -1.2, 0), "neck": (0, 0.1 + 0.4 * out, 0)}
+
+    def joints_friend(t):
+        ph = math.tau * film_time(t)
+        if t < t_sign:
+            return {"hip_L": (0, -math.pi / 2, 0), "hip_R": (0, -math.pi / 2, 0),
+                    "shoulder_L": (0.15, -0.6, 0), "shoulder_R": (-0.15, -0.6, 0), "elbow_L": (0, -0.8, 0),
+                    "elbow_R": (0, -0.8, 0), "neck": (0, 0, 0)}
+        if t < t_friend:                                           # walking round
+            k = ease((t - t_sign) / 0.4)
+            sw = 0.5 * math.sin(ph * 1.6) * k
+            return {"hip_L": (0, -math.pi / 2 * (1 - k) + sw, 0), "hip_R": (0, -math.pi / 2 * (1 - k) - sw, 0),
+                    "shoulder_L": (0.1, -sw, 0), "shoulder_R": (-0.1, sw, 0), "elbow_L": (0, -0.4, 0),
+                    "elbow_R": (0, -0.4, 0), "neck": (0, 0, 0)}
+        if t < t_wrap:                                             # left arm across your chest, right hand strikes
+            strike = sum(pulse(t, t_blows + i * blow_dt + 0.1, 0.25) for i in range(5))
+            return {"hip_L": (0, 0.1, 0), "hip_R": (0, -0.1, 0), "shoulder_L": (-0.4, -1.4, 0), "elbow_L": (0, -0.3, 0),
+                    "shoulder_R": (-0.1, -2.3 + 1.1 * strike, 0), "elbow_R": (0, -0.2, 0), "neck": (0, 0.25, 0)}
+        pull = sum(pulse(t, tt + 0.08) for tt in thrust_times)    # fist above your navel, in and up
+        return {"hip_L": (0, 0.15, 0), "hip_R": (0, -0.15, 0),
+                "shoulder_L": (-0.5, -1.25 - 0.15 * pull, 0), "shoulder_R": (0.5, -1.25 - 0.15 * pull, 0),
+                "elbow_L": (0, -0.9, 0), "elbow_R": (0, -0.9, 0), "neck": (0, 0.3, 0)}
+
+    # the airway diagram beside you: the food piece moves down your throat and, finally, out
+    diagram = (-1.2, -0.95, 1.15)
+    larynx = (diagram[0], diagram[1], diagram[2] + 0.42)
+    mouth = (diagram[0], diagram[1] - 0.12, diagram[2] + 0.62)
+
+    def bolus(t):
+        if t < t_choke - 0.2:
+            return (*mouth, 0, 0, 0)
+        if t < t_choke + 0.15:
+            k = ease((t - t_choke + 0.2) / 0.35)
+            return (*lerp(mouth, larynx, k), 0, 0, 0)
+        if t < t_out:
+            shake = 0.008 * sum(pulse(t, tt + 0.1) for tt in thrust_times)
+            return (larynx[0], larynx[1], larynx[2] + shake, 0, 0, 0)
+        tt = t - t_out                                             # out, fast, then falls
+        v = math.sqrt(2 * (forces[n_out] - hold_n) * 0.05 / 0.01)  # F − F_hold over 5 cm on a 10 g piece
+        return (larynx[0], larynx[1] + 0.8 * v * tt, max(0.03, larynx[2] + 0.6 * v * tt - 0.5 * G * tt ** 2), 0, 0, 0)
+
+    dense = slowmo + [[t_blows - 0.2, t_out + 1.0, 1]]
+    rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
+    rows_friend = unwrap(sample(friend, duration, dense=dense), (4, 5, 6))
+    ts = [r[0] for r in rows_you]
+    v_out = math.sqrt(2 * (forces[n_out] - hold_n) * 0.05 / 0.01)
+
+    story = {
+        "slowmo": slowmo,
+        "series": {"dp": series(airway_dp, duration, dt=1 / 60, breaks=[tt + 0.1 for tt in thrust_times]),
+                   "spo2": series(spo2, duration, dt=0.1), "V": series(lung_l, duration, dt=1 / 30)},
+        "hud": [{"sym": "ΔP", "series": "dp", "unit": "kPa", "fmt": "{:.1f}", "note": "pressure behind the food"},
+                {"sym": "SpO₂", "series": "spo2", "unit": "%", "fmt": "{:.0f}"}],
+        "captions": [
+            [0, "Dinner with a friend.", "you're talking, laughing, eating"],
+            [t_choke - 0.25, "You laugh and breathe in.", "the piece in your mouth goes with the air"],
+            [t_choke + 0.1, "It wedges in your larynx.", f"your airway is {trachea_cm2} cm²: completely blocked"],
+            [t_sign, "You can't speak, cough or breathe.", "hands at the throat: the universal choking sign"],
+            [t_friend, "“Are you choking?” You nod.", "if you can cough, keep coughing; if you can't, act"],
+            [t_blows, "5 back blows.", f"heel of the hand between the shoulder blades: ~{blow_dp:.0f} kPa, {blow_dp * 1000 * A:.2f} N"],
+            [t_thrusts, "Abdominal thrusts.", "fist above the navel, in and up: squeezing the lungs"],
+            [thrust_times[n_out], f"Thrust {n_out + 1}: ΔP = {dps[n_out]:.1f} kPa.",
+             f"{forces[n_out]:.1f} N on the food beats its {hold_n} N grip"],
+            [t_out + 0.6, "Out. You gasp.", f"{t_out - t_choke:.0f} s without air · see a doctor: thrusts can injure"],
+        ],
+        "callouts": [
+            [0, duration, None, [diagram[0] + 0.12, diagram[1], diagram[2] + 0.1], "your airway"],
+            [t_choke + 0.1, t_out, None, [larynx[0] + 0.03, larynx[1], larynx[2]], "food wedged at the larynx"],
+            [t_blows, t_wrap, "friend", [0, 0, 1.55], "back blows"],
+            [t_thrusts, t_out + 1, "friend", [0, 0, 1.55], "thrusts: in and up"],
+        ],
+        "graphs": [
+            {"title": "pressure behind the food (kPa)", "lines": [["dp", "airway", "accent"]],
+             "refs": [[hold_n / A / 1000, "frees it"]]},
+            {"title": "blood oxygen SpO₂ (%)", "lines": [["spo2", "you", "accent"]], "refs": [[90, "hypoxia"]]},
+        ],
+        "eqs": [f"Boyle: P₂ = P₁V₁ / (V₁ − ΔV) → ΔP = {dps[n_out]:.1f} kPa for ΔV = {thrust_dv_l[n_out]} L",
+                f"F = ΔP·A = {dps[n_out]:.1f} kPa × {trachea_cm2} cm² = {forces[n_out]:.1f} N > {hold_n} N",
+                f"back blow: {blow_dp:.0f} kPa → {blow_dp * 1000 * A:.2f} N, not enough here"],
+    }
+    story["captions"].sort(key=lambda c: c[0])
+    return {
+        "story": story,
+        "id": "choking", "title": "Choking",
+        "inputs": dict(lung_volume_frc_L=frc_l, trachea_area_cm2=trachea_cm2, food_grip_N=hold_n,
+                       thrust_volumes_L=list(thrust_dv_l)),
+        "results": [
+            ("Airway cross-section", trachea_cm2, "cm²", "adult trachea ~18 mm across"),
+            ("Pressure from a back blow", blow_dp, "kPa", "a short spike from the blow to the chest wall"),
+            ("Force on the food from a back blow", blow_dp * 1000 * A, "N", "F = ΔP·A"),
+            *[(f"Thrust {i + 1}: pressure", dp, "kPa", f"Boyle, ΔV = {dv} L from FRC {frc_l} L")
+              for i, (dp, dv) in enumerate(zip(dps[:n_out + 1], thrust_dv_l))],
+            ("Force that frees it", forces[n_out], "N", f"thrust {n_out + 1}: ΔP·A beats the {hold_n} N grip"),
+            ("Speed the food leaves at", v_out, "m/s", "(F − F_grip) over ~5 cm on a 10 g piece"),
+            ("Time without air", t_out - t_choke, "s", "unconscious after ~1–2 min of complete obstruction"),
+            ("SpO₂ at the lowest", min(spo2(t / 10) for t in range(int(duration * 10))), "%", "Severinghaus curve, falling PaO₂"),
+        ],
+        "tables": {"Each thrust": {"columns": ["Thrust", "ΔV (L)", "ΔP (kPa)", "Force (N)", "Frees it?"],
+                                   "rows": [[i + 1, dv, round(dp, 1), round(f, 2), "yes" if f > hold_n else "no"]
+                                            for i, (dv, dp, f) in enumerate(zip(thrust_dv_l, dps, forces))]}},
+        "anim": {"fps": FPS, "duration": duration,
+                 "actors": {"you": rows_you, "friend": rows_friend, "bolus": sample(bolus, duration, dense=dense)},
+                 "joints": {"you": joint_rows(joints_you, ts), "friend": joint_rows(joints_friend, ts)},
+                 "lungs": [[t, round((lung_l(t) / frc_l) ** (1 / 3), 4)] for t in ts],
+                 "diagram": list(diagram), "seat": list(seat)},
+    }
+
+
+ALL = [pedestrian, drowning, fall, electrocution, burns, choking]

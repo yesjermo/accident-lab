@@ -11,7 +11,7 @@ Everything on screen comes from out/scenarios.json (run `python3 lab/build.py`).
   blender -b --python blender/render_scenario.py -- all --glb          # web/models/*.glb for the viewer
   blender -b --python blender/render_scenario.py -- drowning --render --from 790   # redo the end, keep 1-789
 
-Scenario ids: pedestrian, drowning, fall, electrocution, burns, all
+Scenario ids: pedestrian, drowning, fall, electrocution, burns, choking, all
 """
 
 import json
@@ -221,7 +221,7 @@ def dummy(name, accent_parts=(), cap=True):
 
 
 def rig(name, cap_rgb=ACCENT, tube=False):
-    """Crash dummy with joints (neck, shoulders, hips) for the stories with people who move.
+    """Crash dummy with joints (neck, shoulders, elbows, hips) for the stories with people who move.
     The body sits inside the actor turned 90° (it faces the actor's +y) so face-down and
     face-up poses stay clear of Euler gimbal lock; physics.pose_from_axes assumes the same."""
     root = empty(name)
@@ -241,10 +241,11 @@ def rig(name, cap_rgb=ACCENT, tube=False):
         prim("uv_sphere", f"{name}_shoulderball{side}", (0, 0, 0), (0.055,) * 3, mat=joint, parent=sh, smooth=True)
         prim("cylinder", f"{name}_uarm{side}", (0, 0.03 * sy, -0.15), (0.042, 0.042, 0.13), rot=(0.12 * sy, 0, 0),
              mat=body, parent=sh, vertices=20, bevel=0.015)
-        prim("uv_sphere", f"{name}_elbow{side}", (0, 0.045 * sy, -0.3), (0.042,) * 3, mat=joint, parent=sh, smooth=True)
-        prim("cylinder", f"{name}_farm{side}", (0, 0.06 * sy, -0.43), (0.036, 0.036, 0.12), mat=body, parent=sh,
+        el = empty(f"{name}_elbow_{side}", (0, 0.045 * sy, -0.3), parent=sh)   # the forearm hangs from the elbow
+        prim("uv_sphere", f"{name}_elbow{side}", (0, 0, 0), (0.042,) * 3, mat=joint, parent=el, smooth=True)
+        prim("cylinder", f"{name}_farm{side}", (0, 0.015 * sy, -0.13), (0.036, 0.036, 0.12), mat=body, parent=el,
              vertices=20, bevel=0.012)
-        prim("uv_sphere", f"{name}_hand{side}", (0, 0.065 * sy, -0.57), (0.04, 0.03, 0.05), mat=body, parent=sh, smooth=True)
+        prim("uv_sphere", f"{name}_hand{side}", (0, 0.02 * sy, -0.27), (0.04, 0.03, 0.05), mat=body, parent=el, smooth=True)
         hip = empty(f"{name}_hip_{side}", (0, 0.09 * sy, 0.93), parent=b)
         prim("cylinder", f"{name}_thigh{side}", (0, 0, -0.21), (0.065, 0.065, 0.19), mat=body, parent=hip,
              vertices=20, bevel=0.02)
@@ -970,8 +971,67 @@ def scene_burns(s, times):
     return cam, mats
 
 
+def scene_choking(s, times):
+    """Dinner table; you choke; your friend gives back blows and abdominal thrusts. An airway diagram beside you."""
+    an = s["anim"]
+    prim("plane", "floor", (0, -0.5, 0), (5, 4, 1), mat=clay(ROAD))
+    for i in range(-4, 5):
+        prim("cube", f"board{i}", (i * 1.0, -0.5, 0.002), (0.01, 4, 0.002), mat=clay(CLAY_DARK))
+    prim("cube", "wall", (0, 3.4, 1.4), (5, 0.1, 1.4), mat=clay(CLAY))
+    prim("cube", "picture", (-1.4, 3.28, 1.7), (0.5, 0.02, 0.35), mat=clay(GLASS, rough=0.1))
+    prim("cube", "table_top", (0, 0.05, 0.74), (0.9, 0.5, 0.025), mat=clay(CLAY), bevel=0.01)
+    for tx in (-0.8, 0.8):
+        for ty in (-0.38, 0.48):
+            prim("cube", "table_leg", (tx, ty, 0.36), (0.03, 0.03, 0.36), mat=clay(CLAY_DARK))
+    for i, (cy, back) in enumerate(((-0.95, -1.18), (1.05, 1.28))):
+        prim("cube", f"chair_seat{i}", (0, cy, 0.44), (0.24, 0.22, 0.025), mat=clay(CLAY), bevel=0.01)
+        prim("cube", f"chair_back{i}", (0, back, 0.62), (0.24, 0.02, 0.17), mat=clay(CLAY), bevel=0.01)
+        for lx in (-0.2, 0.2):
+            for ly in (cy - 0.18, cy + 0.18):
+                prim("cylinder", "chair_leg", (lx, ly, 0.21), (0.015, 0.015, 0.21), mat=clay(CLAY_DARK), vertices=8)
+    for i, py in enumerate((-0.25, 0.35)):
+        prim("cylinder", f"plate{i}", (0, py, 0.77), (0.13, 0.13, 0.008), mat=clay((250, 250, 248)), vertices=32)
+        prim("cylinder", f"glass{i}", (0.28, py, 0.83), (0.035, 0.035, 0.07), mat=clay(GLASS, rough=0.1), vertices=16)
+
+    # the airway diagram: a card beside you with your throat, larynx, windpipe and lungs
+    dx, dy, dz = an["diagram"]
+    prim("cube", "diagram_card", (dx - 0.04, dy, dz + 0.12), (0.006, 0.34, 0.6), mat=clay((252, 252, 250)), bevel=0.004)
+    larynx = Vector((dx, dy, dz + 0.42))
+    mouth = Vector((dx, dy - 0.12, dz + 0.62))
+    pipe = clay((214, 196, 190))
+    tube("diagram_pharynx", mouth, larynx + Vector((0, 0, 0.02)), 0.022, pipe)
+    prim("torus", "diagram_larynx", tuple(larynx), (1, 1, 1), mat=clay(CLAY_DARK), major_radius=0.04,
+         minor_radius=0.007, major_segments=24, minor_segments=6)
+    split = Vector((dx, dy, dz + 0.13))
+    tube("diagram_trachea", larynx, split, 0.018, pipe)
+    for side in (1, -1):
+        lung_c = Vector((dx, dy + 0.14 * side, dz - 0.05))
+        tube(f"diagram_bronchus{side}", split, lung_c + Vector((0, -0.04 * side, 0.08)), 0.012, pipe)
+        lung = empty(f"lungs_{side}", tuple(lung_c))
+        lung["scaled"] = True
+        prim("uv_sphere", f"lung_mesh{side}", (0, 0, 0), (0.06, 0.11, 0.19), mat=clay((226, 190, 190)), parent=lung,
+             smooth=True, segments=24, ring_count=12)
+    bolus = empty("bolus")
+    prim("uv_sphere", "bolus_mesh", (0, 0, 0), (0.036, 0.03, 0.027), mat=clay(ACCENT), parent=bolus, smooth=True,
+         segments=16, ring_count=8)
+    animate_actor(bolus, an["actors"]["bolus"], times)
+
+    you = rig("you", ACCENT)
+    friend = rig("friend", GREEN)
+    for person in (you, friend):
+        animate_actor(person, an["actors"][person.name], times)
+        animate_joints(person, an["joints"][person.name], times)
+
+    cam = make_camera(30)
+    hip = actor_hip(s, "you")
+    d = Vector(an["diagram"])
+    mats = animate_camera(cam, times, lambda t: tuple(hip(t).lerp(d, 0.35) + Vector((0, 0, 0.25))),
+                          lambda g: (g.x + 2.9, g.y - 3.9, g.z + 1.1), smooth=0.1)
+    return cam, mats
+
+
 SCENES = {"pedestrian": scene_pedestrian, "drowning": scene_drowning, "fall": scene_fall,
-          "electrocution": scene_electrocution, "burns": scene_burns}
+          "electrocution": scene_electrocution, "burns": scene_burns, "choking": scene_choking}
 
 
 def scene_extras(sid):
@@ -991,6 +1051,15 @@ def scene_extras(sid):
                 show(o, off + 1.0 <= t < an["t_power"])
             for o in aed:
                 show(o, t >= an["t_aed"])
+        return upd
+    if sid == "choking":
+        an = DATA[sid]["anim"]
+        lungs = [o for o in objs if o.name.startswith("lungs_")]
+
+        def upd(fi, t):
+            k = interp(an["lungs"], t)[0]                          # lung volume (cube root), squeezed by each thrust
+            for o in lungs:
+                o.scale = (k, k, k)
         return upd
     if sid == "burns":
         an = DATA[sid]["anim"]
@@ -1089,7 +1158,7 @@ def export_glb(sid, sc, world_coll, times, extra):
     Effects the frame handler makes (sparks blinking, flames flickering) are baked
     into scale keys, because glTF has no visibility channel."""
     fx = [o for o in world_coll.all_objects
-          if o.name.startswith(("spark", "bolt", "current", "ring", "aed_", "burn_")) or o.get("flame")]
+          if o.name.startswith(("spark", "bolt", "current", "ring", "aed_", "burn_", "lungs_")) or o.get("flame")]
     if extra and fx:
         base = {o.name: tuple(o.scale) for o in fx}
         for f in range(1, len(times) + 1):
@@ -1097,7 +1166,7 @@ def export_glb(sid, sc, world_coll, times, extra):
             for o in fx:
                 if o.hide_render:
                     o.scale = (0, 0, 0)
-                elif not o.get("flame"):
+                elif not (o.get("flame") or o.get("scaled")):              # flames and lungs set their own scale
                     o.scale = base[o.name]
                 o.keyframe_insert("scale", frame=f)
                 show(o, True)

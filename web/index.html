@@ -512,6 +512,19 @@ const BUILD = {
     camera.position.set(4.6, 2.2, 5.6);
     return "A 120 V line sags across the garden path and you reach to push it aside. Crimson marks the current's path, hand to feet across your heart. Your neighbour stays back and cuts the power before touching you.";
   },
+  choking(s) {
+    const an = s.anim;
+    ground(400, 400, C.paper, -.02);
+    ground(10, 8, C.road, 0, 0, -.5);
+    box(1.8, 1.0, .05, mat(C.clay), 0, .05, .74);
+    for (const [x, y] of [[-.8, -.38], [.8, -.38], [-.8, .48], [.8, .48]]) box(.06, .06, .72, mat(C.clayDark), x, y, .36);
+    box(.02, .68, 1.2, mat(0xfcfcfa), an.diagram[0] - .04, an.diagram[1], an.diagram[2] + .12);
+    const bolus = new THREE.Group(); world.add(bolus); sphere(.035, mat(C.accent), 0, 0, 0, bolus); actors.bolus = bolus;
+    actors.you = rigActor(C.accent); actors.friend = rigActor(C.green);
+    followName = "you";
+    camera.position.set(3.2, 2.2, 4.4);
+    return "You laugh with food in your mouth and breathe it into your larynx. Your friend gives 5 back blows, then abdominal thrusts: each squeezes your blocked lungs (Boyle's law) until the pressure pushes the food out. The card shows your airway.";
+  },
   burns(s) {
     const an = s.anim;
     ground(400, 400, C.paper, -.02);

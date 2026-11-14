@@ -9,7 +9,7 @@
 
 **Try it in the browser: [yesjermo.github.io/accident-lab](https://yesjermo.github.io/accident-lab/)**. Pick an accident and watch the Blender film and the live 3D scene play in sync, then read the physics and the medical notes under it.
 
-A study project that walks through five accidents three ways:
+A study project that walks through six accidents three ways:
 
 1. **Physics & engineering**: momentum, energy, deceleration, Head Injury Criterion, fluid drag, buoyancy, Ohm's law, Joule heating, heat conduction.
 2. **3D simulation**: the same keyframes drive a Blender scene (renders to MP4) and a Three.js viewer in the browser.
@@ -22,6 +22,7 @@ A study project that walks through five accidents three ways:
 | Fall from height | v = √(2gh), g-load vs stopping distance | TEVAR for aortic tear, spinal fusion, calcaneus fixation |
 | Electrocution | I = V/R, skin resistance, current thresholds, Q = I²Rt | Fasciotomy, serial debridement |
 | Burns in a house fire | Rule of nines, Parkland formula, skin as a semi-infinite solid | Escharotomy, excision, skin grafting |
+| Choking on food | Boyle's law in the blocked lungs, ΔP·A against the food's grip, SpO₂ with no airflow | Laryngoscopy and Magill forceps, rigid bronchoscopy, emergency cricothyrotomy |
 
 > Educational only. In a real emergency, call 911 / 112 / 999 first.
 
@@ -65,6 +66,7 @@ Every scenario is a function with its assumptions as arguments in [lab/physics.p
 - `fall(height=15)`: the 4-storey LD50.
 - `electrocution(voltage=240, condition="dry")`
 - `burns(burned=("front_torso", "back_torso", "right_leg"))`
+- `choking(hold_n=2.5)`: food that sits looser comes out on an earlier thrust
 
 Edit `ALL` at the bottom of `physics.py` (e.g. `lambda: physics.pedestrian(speed_kmh=30)`) to change what the viewer and Blender show.
 

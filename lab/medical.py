@@ -91,6 +91,38 @@ CONTENT = {
             ("Diving injury", "Shallow-water dive leads to cervical fracture: surgical decompression and spinal fusion."),
         ],
     },
+    "choking": {
+        "mechanism": [
+            "Food is pulled into the airway with a sudden breath in: laughing, talking or gasping while eating. Large, firm pieces (meat, hot dogs, grapes, nuts in children) wedge at the larynx, the narrowest point.",
+            "Complete obstruction: no air in or out. You can't speak, cough or breathe, and you go blue. Partial obstruction: you can still cough and make sounds.",
+            "With no air moving, oxygen in the lungs and blood runs down: unconscious in about 1–2 minutes, then the heart stops from lack of oxygen.",
+            "Risk factors: alcohol, dentures, dementia, stroke or Parkinson's (poor swallowing), and young children (small airways).",
+        ],
+        "prevention": [
+            "Cut food small, chew it well, and don't talk or laugh with your mouth full.",
+            "Children under 5: quarter grapes and cherry tomatoes lengthways, no whole nuts or hard sweets, and sit them down to eat.",
+            "Older adults with swallowing problems: a speech and language assessment and texture-modified food.",
+            "Learn back blows, abdominal thrusts and CPR: most choking happens in front of family or friends.",
+        ],
+        "first_aid": [
+            "Ask \u201cAre you choking?\u201d. If they can cough, encourage coughing and stay with them.",
+            "If they can't cough, speak or breathe: up to 5 back blows. Lean them forward, support the chest, and strike between the shoulder blades with the heel of your hand.",
+            "Then up to 5 abdominal thrusts: stand behind, a fist just above the navel, pull sharply in and up. Alternate 5 and 5.",
+            "Pregnant or very large: chest thrusts instead. Infants under 1: 5 back blows face-down along your forearm, then 5 chest thrusts with two fingers; never abdominal thrusts.",
+            "If they become unresponsive: lower them to the floor, call 911, and start CPR. Compressions also push air against the blockage.",
+            "Anyone given abdominal thrusts should see a doctor: thrusts can injure the stomach, liver or spleen.",
+        ],
+        "hospital": [
+            "Still obstructed: direct laryngoscopy, and the object is pulled out with Magill forceps.",
+            "Pieces that went past the larynx: chest X-ray (many foods don't show), then bronchoscopy.",
+            "After abdominal thrusts: check the abdomen for injury; after a long obstruction, look for aspiration pneumonia and hypoxic brain injury.",
+        ],
+        "surgery": [
+            ("Rigid bronchoscopy", "Under general anaesthetic a metal tube is passed through the mouth into the windpipe; forceps or a basket retrieve the food from the bronchus while the patient is ventilated through the scope."),
+            ("Emergency cricothyrotomy", "When nothing can be seen or removed and oxygen can't be delivered: a cut through the cricothyroid membrane just below the Adam's apple, and a tube into the windpipe below the blockage."),
+            ("Tracheostomy", "If the larynx is badly swollen or injured, a planned opening lower in the neck for a longer-term airway."),
+        ],
+    },
     "fall": {
         "mechanism": [
             "Feet-first landing: calcaneus (heel) fractures, tibial plateau, and axial load up the spine giving lumbar burst fractures. Together that is 'Don Juan / lover's fracture'.",
