@@ -9,6 +9,7 @@ Everything on screen comes from out/scenarios.json (run `python3 lab/build.py`).
   blender -b --python blender/render_scenario.py -- all --render       # MP4s into out/
   blender -b --python blender/render_scenario.py -- fall --still 60    # one PNG frame
   blender -b --python blender/render_scenario.py -- all --glb          # web/models/*.glb for the viewer
+  blender -b --python blender/render_scenario.py -- drowning --render --from 790   # redo the end, keep 1-789
 
 Scenario ids: pedestrian, drowning, fall, electrocution, burns, all
 """
@@ -24,17 +25,21 @@ from mathutils import Euler, Matrix, Vector
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-SID = next((a for a in argv if not a.startswith("--") and not a.isdigit()), "pedestrian")
+_VALUED = {"--still", "--frames", "--from"}                                 # flags that take the next argument
+SID = next((a for i, a in enumerate(argv) if not a.startswith("--") and (i == 0 or argv[i - 1] not in _VALUED)),
+           "pedestrian")
 RENDER = "--render" in argv
 MAX_FRAMES = int(argv[argv.index("--frames") + 1]) if "--frames" in argv else None
-STILL = int(argv[argv.index("--still") + 1]) if "--still" in argv else None
+STILL = [int(f) for f in argv[argv.index("--still") + 1].split(",")] if "--still" in argv else None   # one or a,b,c
 GLB = "--glb" in argv
+FROM = int(argv[argv.index("--from") + 1]) if "--from" in argv else 1   # re-render frames FROM..end only
 
 with open(os.path.join(ROOT, "out", "scenarios.json")) as f:
     DATA = {s["id"]: s for s in json.load(f)}
 
 FPS = 24
 RES = (720, 1280)
+WHEEL_R = 0.38                      # tyre radius (m)
 HUD_DEPTH = 0.3                 # HUD plane distance in front of the camera (m)
 FONT_DIR = "/System/Library/Fonts/Supplemental"
 
@@ -215,6 +220,64 @@ def dummy(name, accent_parts=(), cap=True):
     return root
 
 
+def swimmer(name, cap_rgb=ACCENT, tube=False):
+    """Crash dummy with joints (neck, shoulders, hips) for the drowning story.
+    The body sits inside the actor turned 90° (it faces the actor's +y) so face-down and
+    face-up poses stay clear of Euler gimbal lock; physics.pose_from_axes assumes the same."""
+    root = empty(name)
+    b = empty(f"{name}_body", parent=root)
+    b.rotation_euler = (0, 0, math.pi / 2)
+    body, joint, cap = clay(CLAY), clay(CLAY_DARK), clay(cap_rgb, rough=0.7)
+    prim("cube", f"{name}_chest", (0, 0, 1.25), (0.11, 0.17, 0.2), mat=body, parent=b, bevel=0.06)
+    prim("cube", f"{name}_pelvis", (0, 0, 0.93), (0.1, 0.15, 0.09), mat=body, parent=b, bevel=0.04)
+    neck = empty(f"{name}_neck", (0, 0, 1.47), parent=b)
+    prim("cylinder", f"{name}_neckbar", (0, 0, 0.02), (0.04, 0.04, 0.05), mat=joint, parent=neck, vertices=20)
+    prim("uv_sphere", f"{name}_head", (0, 0, 0.17), (0.1, 0.095, 0.12), mat=body, parent=neck, smooth=True,
+         segments=32, ring_count=16)
+    prim("uv_sphere", f"{name}_cap", (0, 0, 0.22), (0.106, 0.1, 0.085), mat=cap, parent=neck, smooth=True,
+         segments=32, ring_count=16)
+    for side, sy in (("L", 1), ("R", -1)):
+        sh = empty(f"{name}_shoulder_{side}", (0, 0.205 * sy, 1.4), parent=b)
+        prim("uv_sphere", f"{name}_shoulderball{side}", (0, 0, 0), (0.055,) * 3, mat=joint, parent=sh, smooth=True)
+        prim("cylinder", f"{name}_uarm{side}", (0, 0.03 * sy, -0.15), (0.042, 0.042, 0.13), rot=(0.12 * sy, 0, 0),
+             mat=body, parent=sh, vertices=20, bevel=0.015)
+        prim("uv_sphere", f"{name}_elbow{side}", (0, 0.045 * sy, -0.3), (0.042,) * 3, mat=joint, parent=sh, smooth=True)
+        prim("cylinder", f"{name}_farm{side}", (0, 0.06 * sy, -0.43), (0.036, 0.036, 0.12), mat=body, parent=sh,
+             vertices=20, bevel=0.012)
+        prim("uv_sphere", f"{name}_hand{side}", (0, 0.065 * sy, -0.57), (0.04, 0.03, 0.05), mat=body, parent=sh, smooth=True)
+        hip = empty(f"{name}_hip_{side}", (0, 0.09 * sy, 0.93), parent=b)
+        prim("cylinder", f"{name}_thigh{side}", (0, 0, -0.21), (0.065, 0.065, 0.19), mat=body, parent=hip,
+             vertices=20, bevel=0.02)
+        prim("uv_sphere", f"{name}_knee{side}", (0, 0, -0.43), (0.055,) * 3, mat=joint, parent=hip, smooth=True)
+        prim("cylinder", f"{name}_shin{side}", (0, 0, -0.65), (0.05, 0.05, 0.2), mat=body, parent=hip,
+             vertices=20, bevel=0.02)
+        prim("cube", f"{name}_foot{side}", (0.05, 0, -0.895), (0.12, 0.05, 0.035), mat=body, parent=hip, bevel=0.02)
+    if tube:                                                     # rescue tube across the chest
+        prim("cylinder", f"{name}_tube", (-0.16, 0, 1.15), (0.08, 0.08, 0.45), rot=(0.9, 0, 0),
+             mat=clay(AMBER, rough=0.6), parent=b, vertices=20, bevel=0.03)
+    return root
+
+
+def animate_joints(rig, joints, times):
+    """Keyframe the rig's joint empties from physics rows [t, rx, ry, rz]."""
+    for jname, rows in joints.items():
+        o = bpy.data.objects.get(f"{rig.name}_{jname}")
+        if o is None:
+            raise KeyError(f"physics gives joint '{jname}' but the rig '{rig.name}' has no empty named {rig.name}_{jname}")
+        for f, t in enumerate(times, start=1):
+            o.rotation_euler = interp(rows, t)
+            o.keyframe_insert("rotation_euler", frame=f)
+
+
+def water_profile_mesh(name, profile, x0, x1, mat):
+    """A (y, z) section polygon extruded along x from x0 to x1 (the cut face is at x1)."""
+    n = len(profile)
+    verts = [(x0, y, z) for y, z in profile] + [(x1, y, z) for y, z in profile]
+    faces = [list(range(n)), list(range(n, 2 * n))[::-1]]
+    faces += [[i, n + i, n + (i + 1) % n, (i + 1) % n] for i in range(n)]
+    return mesh_from(name, verts, faces, mat)
+
+
 def car(name="car"):
     """White SUV. Origin at ground under the middle; front bumper at x = +2.2."""
     root = empty(name)
@@ -240,15 +303,28 @@ def car(name="car"):
              bevel=0.015)
     for wx in (1.45, -1.45):
         for sy in (0.86, -0.86):
-            prim("cylinder", f"{name}_tyre", (wx, sy, 0.38), (0.38, 0.38, 0.13), rot=(math.pi / 2, 0, 0),
-                 mat=tyre, parent=root, vertices=40, bevel=0.04)
-            prim("cylinder", f"{name}_rim", (wx, sy * 1.16, 0.38), (0.25, 0.25, 0.012), rot=(math.pi / 2, 0, 0),
-                 mat=paint, parent=root, vertices=40)
+            # each wheel hangs on its own hub (an empty on the axle) so it can roll: angle = distance / radius
+            hub = empty(f"{name}_wheel", (wx, sy, WHEEL_R), parent=root)
+            prim("cylinder", f"{name}_tyre", (0, 0, 0), (WHEEL_R, WHEEL_R, 0.13), rot=(math.pi / 2, 0, 0),
+                 mat=tyre, parent=hub, vertices=40, bevel=0.04)
+            prim("cylinder", f"{name}_rim", (0, sy * 0.16, 0), (0.25, 0.25, 0.012), rot=(math.pi / 2, 0, 0),
+                 mat=paint, parent=hub, vertices=40)
             for k in range(6):
                 a = k * math.pi / 3
-                prim("cube", f"{name}_spoke", (wx + 0.13 * math.cos(a), sy * 1.175, 0.38 + 0.13 * math.sin(a)),
-                     (0.11, 0.01, 0.02), rot=(0, -a, 0), mat=dark, parent=root)
+                prim("cube", f"{name}_spoke", (0.13 * math.cos(a), sy * 0.175, 0.13 * math.sin(a)),
+                     (0.11, 0.01, 0.02), rot=(0, -a, 0), mat=dark, parent=hub)
     return root
+
+
+def roll_wheels(car_obj, rows, times):
+    """Keyframe each hub's spin from the distance the car has travelled (rolling without slip)."""
+    hubs = [o for o in car_obj.children if o.name.startswith(f"{car_obj.name}_wheel")]
+    x0 = interp(rows, 0)[0]
+    for f, t in enumerate(times, start=1):
+        angle = (interp(rows, t)[0] - x0) / WHEEL_R
+        for h in hubs:
+            h.rotation_euler = (0, angle, 0)
+            h.keyframe_insert("rotation_euler", frame=f)
 
 
 def building(name, x, y, w, d, h, windows=True, face=-1, side_windows=False):
@@ -634,6 +710,7 @@ def scene_pedestrian(s, times):
     c = car()
     v = dummy("victim")
     animate_actor(c, s["anim"]["actors"]["car"], times)
+    roll_wheels(c, s["anim"]["actors"]["car"], times)
     animate_actor(v, s["anim"]["actors"]["victim"], times)
     cam = make_camera(28)
     track = actor_pos(s, "victim", 0.6)
@@ -642,27 +719,65 @@ def scene_pedestrian(s, times):
 
 
 def scene_drowning(s, times):
-    rip = s["anim"]["rip"]
-    prim("plane", "sea", (0, 90, -0.02), (160, 90, 1), mat=clay((176, 204, 218), rough=0.95))
-    prim("plane", "beach", (0, -25, 0.0), (160, 25, 1), mat=clay(SAND))
-    prim("plane", "rip", (0, rip["length"] / 2, -0.01), (rip["half_width"], rip["length"] / 2, 1),
-         mat=clay((130, 168, 190), rough=0.95))
-    for x in range(-80, 81, 9):
-        if abs(x) > rip["half_width"] + 2:
-            prim("cube", f"wave{x}", (x, 22 + (x % 3), 0.05), (3.6, 0.5, 0.05), mat=clay((252, 252, 252)), bevel=0.2)
-    for y in range(8, rip["length"], 14):
-        prim("cone", f"arrow{y}", (0, y, 0.05), (1.4, 2.2, 0.05), mat=clay(ACCENT), vertices=3)
-    for fx in (-24, 24):
-        prim("cylinder", f"flag{fx}", (fx, -3, 1.5), (0.12, 0.12, 1.5), mat=clay(CLAY))
-    cols = {"swimmer_fight": ACCENT, "swimmer_parallel": GREEN, "swimmer_float": AMBER}
-    for name, col in cols.items():
-        sw = empty(name)
-        prim("uv_sphere", name + "_head", (0, 0, 0.4), (1.1, 1.1, 1.1), mat=clay(col), parent=sw, smooth=True)
-        prim("torus", name + "_ring", (0, 0, 0.05), (1, 1, 1), mat=clay((252, 252, 252)), parent=sw,
-             major_radius=2.0, minor_radius=0.15)
-        animate_actor(sw, s["anim"]["actors"][name], times)
+    """The sea in cut-away: seabed section, surface, rip arrows; you and the lifeguard."""
+    an = s["anim"]
+    bed = an["seabed"]
+    x0, x1 = -45.0, 6.0                                           # the sea runs back from the cut at x = 6
+
+    def bed_z(y):
+        return interp(bed, y)[0]
+
+    beach = [(y, z) for y, z in bed if y <= 0] + [(0.0, -8.0), (bed[0][0], -8.0)]
+    floor = [(y, z) for y, z in bed if y >= 0] + [(bed[-1][0], -8.0), (0.0, -8.0)]
+    water_profile_mesh("beach", beach[::-1], x0, x1, clay(SAND))
+    water_profile_mesh("seabed", floor[::-1], x0, x1, clay((196, 208, 204)))   # wet sand, seen through water
+    deep = [(y, z) for y, z in bed if 0 < y] + [(bed[-1][0], 0.0), (0.0, 0.0)]
+    water_profile_mesh("sea_back", deep[::-1], x0 - 0.2, x0, clay((178, 206, 220), rough=0.95))
+    prim("plane", "sea_surface", ((x0 + x1) / 2, 80, 0.0), ((x1 - x0) / 2, 80, 1), mat=clay(SEA, rough=0.9))
+    for y in range(4, 150, 7):                                    # swell lines: texture and speed from above
+        prim("cube", f"swell{y}", ((x0 + x1) / 2, y + 0.5, 0.012), ((x1 - x0) / 2, 0.05, 0.004),
+             mat=clay((236, 244, 247), rough=0.9))
+    for y in range(12, an["rip"]["length"], 12):
+        prim("cone", f"rip_arrow{y}", (0, y, 0.04), (1.0, 1.7, 0.04), rot=(0, 0, 0), mat=clay(ACCENT), vertices=3)
+    for x in range(-43, 4, 7):
+        if abs(x) > an["rip"]["half_width"] + 2:
+            prim("cube", f"breaker{x}", (x, 26 + (x % 3), 0.05), (2.8, 0.45, 0.05), mat=clay((252, 252, 252)), bevel=0.15)
+    tx, ty = an["tower"]
+    tz = bed_z(ty)
+    for dx in (-0.6, 0.6):
+        for dy in (-0.6, 0.6):
+            prim("cylinder", "tower_leg", (tx + dx, ty + dy, tz + 0.9), (0.06, 0.06, 0.9), mat=clay(CLAY_DARK), vertices=12)
+    prim("cube", "tower_deck", (tx, ty, tz + 1.75), (0.8, 0.8, 0.05), mat=clay(CLAY), bevel=0.02)
+    prim("cube", "tower_rail", (tx, ty + 0.78, tz + 2.2), (0.8, 0.03, 0.03), mat=clay(CLAY_DARK))
+    for fx in (-32, 4):
+        prim("cylinder", f"flagpole{fx}", (fx, -3, bed_z(-3) + 1.2), (0.04, 0.04, 1.2), mat=clay(CLAY_DARK), vertices=10)
+        prim("cube", f"flag{fx}", (fx + 0.32, -3, bed_z(-3) + 2.15), (0.3, 0.01, 0.2), mat=clay(ACCENT))
+
+    you = swimmer("you", ACCENT)
+    guard = swimmer("lifeguard", AMBER, tube=True)
+    for rig in (you, guard):
+        animate_actor(rig, an["actors"][rig.name], times)
+        animate_joints(rig, an["joints"][rig.name], times)
+
     cam = make_camera(30)
-    mats = animate_camera(cam, times, lambda t: (0, 28, 0), lambda g: (0, -95, 185), smooth=1)
+    track = actor_pos(s, "you")
+
+    def target(t):
+        p = track(t)
+        if p.y < 2:                                               # on the beach
+            return (p.x, p.y, p.z + 0.4)
+        if p.x < -1:                                              # towed: look a little ahead, toward the beach
+            return (p.x, p.y - 2.5, p.z)
+        return (p.x, p.y, min(p.z + 0.6, -0.3) if p.z < -0.6 else p.z + 0.4)
+
+    def offset(g):
+        """Side view through the cut, rising to an aerial view for the tow, then close on the sand."""
+        side = Vector((x1 + 12.0, g.y - 1.0, -0.35))
+        aerial = Vector((g.x + 6.0, g.y - 7.0, 8.0))
+        beach = Vector((g.x + 4.5, g.y + 3.0, g.z + 1.8))
+        p = side.lerp(aerial, max(0.0, min(1.0, (-g.x - 1.0) / 6.0)))
+        return tuple(p.lerp(beach, max(0.0, min(1.0, (3.0 - g.y) / 4.0))))
+    mats = animate_camera(cam, times, target, offset, smooth=0.45)
     return cam, mats
 
 
@@ -808,15 +923,16 @@ def build(sid):
     if GLB:
         export_glb(sid, sc, world_coll, times, extra)
     if STILL is not None:
-        sc.frame_set(STILL)
         try:
             sc.render.image_settings.media_type = "IMAGE"
         except (AttributeError, TypeError):
             pass
         sc.render.image_settings.file_format = "PNG"
-        sc.render.filepath = os.path.join(ROOT, "out", "previews", f"{sid}_{STILL}.png")
-        bpy.ops.render.render(write_still=True)
-        print(f"Still out/previews/{sid}_{STILL}.png ({len(times)} frames total)")
+        for f in STILL:
+            sc.frame_set(f)
+            sc.render.filepath = os.path.join(ROOT, "out", "previews", f"{sid}_{f}.png")
+            bpy.ops.render.render(write_still=True)
+            print(f"Still out/previews/{sid}_{f}.png ({len(times)} frames total)")
     elif RENDER:
         # Render frame by frame: changing HUD text inside an animation render crashes
         # Blender 5.3, but updating it between still renders is safe.
@@ -828,7 +944,7 @@ def build(sid):
             pass
         sc.render.image_settings.file_format = "PNG"
         n_frames = min(len(times), MAX_FRAMES or len(times))
-        for f in range(1, n_frames + 1):
+        for f in range(FROM, n_frames + 1):                        # frames before FROM are kept from a previous run
             sc.frame_set(f)
             sc.render.filepath = os.path.join(frames_dir, f"{f:04d}.png")
             bpy.ops.render.render(write_still=True)

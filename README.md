@@ -18,7 +18,7 @@ A study project that walks through five accidents three ways:
 | Scenario | Key physics | Key surgery |
 |---|---|---|
 | Pedestrian hit by car | KE ∝ v², momentum transfer, HIC, throw distance, stopping distance | Damage-control laparotomy, craniotomy, IM nail, fasciotomy |
-| Drowning in a rip current | Vector velocity, drag power, buoyancy, 2D sim of 3 escape strategies | ICU ventilation, ECMO rewarming |
+| Drowning in a rip current, told as if it happens to you | Rip vs swim speed, drag power, buoyancy (why you can't keep your head up), sinking terminal velocity, SpO₂ from the oxygen dissociation curve, 3 escape strategies compared | In-water rescue breaths, drowning CPR, ICU ventilation, ECMO rewarming |
 | Fall from height | v = √(2gh), g-load vs stopping distance | TEVAR for aortic tear, spinal fusion, calcaneus fixation |
 | Electrocution | I = V/R, skin resistance, current thresholds, Q = I²Rt | Fasciotomy, serial debridement |
 | Burns in a house fire | Rule of nines, Parkland formula, skin as a semi-infinite solid | Escharotomy, excision, skin grafting |
@@ -61,7 +61,7 @@ Each run also saves `out/<scenario>.blend`. The HUD text is updated by a frame h
 Every scenario is a function with its assumptions as arguments in [lab/physics.py](lab/physics.py). Change them and re-run `build.py`:
 
 - `pedestrian(speed_kmh=30)`: watch the HIC and fatality risk fall.
-- `drowning(rip_speed=0.8)`: now a strong swimmer *can* fight it, slowly.
+- `drowning(endurance_s=40)`: you tire sooner, closer to the beach. `rip_speed=2.0` is a strong rip; `start_offshore=40` starts you further out.
 - `fall(height=15)`: the 4-storey LD50.
 - `electrocution(voltage=240, condition="dry")`
 - `burns(burned=("front_torso", "back_torso", "right_leg"))`

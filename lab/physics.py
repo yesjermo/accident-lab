@@ -277,154 +277,497 @@ def pedestrian(speed_kmh=50, car_mass=1500, ped_mass=75, mu_brake=0.8,
 # ---------------------------------------------------------------------------
 # 2. Drowning in a rip current
 # ---------------------------------------------------------------------------
+def pose_from_axes(f, u):
+    """Blender XYZ Euler for the swimmer rig, from where the face (f) and the head (u) point.
+    The rig's body faces the actor's +y, so the actor axes are x = f × u, y = f, z = u. That keeps
+    face-down and face-up poses (the whole drowning story) away from XYZ gimbal lock."""
+    x = (f[1] * u[2] - f[2] * u[1], f[2] * u[0] - f[0] * u[2], f[0] * u[1] - f[1] * u[0])
+    m = [[x[i], f[i], u[i]] for i in range(3)]                     # columns: x, y, z of the actor
+    b = math.asin(max(-1.0, min(1.0, -m[2][0])))
+    if abs(math.cos(b)) > 1e-6:
+        return math.atan2(m[2][1], m[2][2]), b, math.atan2(m[1][0], m[0][0])
+    return math.atan2(m[0][1] if b > 0 else -m[0][1], m[1][1]), b, 0.0
+
+
+def unwrap(rows, cols):
+    """Keep Euler angles continuous between keys so linear interpolation follows the real motion.
+    Every XYZ rotation has two Euler forms, (a, b, c) and (a + π, π − b, c + π); a body rolling through
+    side-lying passes from one to the other, and the interpolator would spin it the long way round.
+    For a rotation (three columns) pick, key by key, the form and the 2π turns nearest the previous key."""
+    def near(v, ref):
+        return v - round((v - ref) / math.tau) * math.tau
+    for i in range(1, len(rows)):
+        prev = [rows[i - 1][c] for c in cols]
+        if len(cols) == 3:
+            a, b, c = (rows[i][k] for k in cols)
+            forms = [(a, b, c), (a + math.pi, math.pi - b, c + math.pi)]
+            best = min(([near(v, p) for v, p in zip(f, prev)] for f in forms),
+                       key=lambda f: sum(abs(v - p) for v, p in zip(f, prev)))
+            for k, v in zip(cols, best):
+                rows[i][k] = v
+        else:
+            for k, p in zip(cols, prev):
+                rows[i][k] = near(rows[i][k], p)
+    return rows
+
+
+def norm(v):
+    n = math.sqrt(sum(c * c for c in v)) or 1.0
+    return tuple(c / n for c in v)
+
+
+def lerp(a, b, k):
+    k = max(0.0, min(1.0, k))
+    return tuple(x + (y - x) * k for x, y in zip(a, b))
+
+
+# ---------------------------------------------------------------------------
+# 2. Drowning in a rip current: told as if it happens to you
+# ---------------------------------------------------------------------------
 def drowning(rip_speed=1.5, swim_speed=1.0, rip_half_width=15, rip_length=90,
-             start_offshore=40, endurance_s=150, water_temp_c=15):
-    """Top-down 2D sim. x = along the beach, y = distance offshore (+ out to sea)."""
+             start_offshore=20, endurance_s=100, water_temp_c=18, mass=70):
+    """You are 20 m out when a rip current takes you. You fight it, tire, go under,
+    and a lifeguard brings you back. x = along the beach, y = offshore (+ out to sea), z = up."""
+    rho, body_vol = 1025, 0.0703                                   # sea water; 70 kg adult, lungs at rest
+    seabed = [(-40, 1.6), (-12, 0.9), (-2, 0.15), (0, 0.0), (10, -0.8), (20, -1.6), (35, -2.6),
+              (55, -3.6), (80, -4.6), (100, -5.0), (160, -5.2)]
+
+    def bed(y):
+        for (y0, z0), (y1, z1) in zip(seabed, seabed[1:]):
+            if y <= y1:
+                return z0 + (z1 - z0) * max(0.0, (y - y0) / (y1 - y0))
+        return seabed[-1][1]
 
     def current(x, y):
-        if abs(x) < rip_half_width and y < rip_length:
-            # strongest in the middle, fades towards the edges and the rip head
+        if abs(x) < rip_half_width and 0 < y < rip_length:
             fx = 1 - (x / rip_half_width) ** 2
             fy = 1 if y < rip_length * 0.7 else (rip_length - y) / (rip_length * 0.3)
-            return 0, rip_speed * fx * fy
-        return 0, 0
+            return rip_speed * fx * fy
+        return 0.0
 
-    def simulate(strategy, t_max=240, dt=1 / FPS):
-        x, y, t, energy = 0.0, float(start_offshore), 0.0, endurance_s
-        path, sank_at, safe_at = [], None, None
+    # --- what each choice gets you (2D, from the surface) -------------------
+    def simulate(strategy, t_max=300, dt=0.05):
+        x, y, t, energy = 0.0, float(start_offshore), 0.0, float(endurance_s)
         while t <= t_max:
-            path.append((t, x, y, energy))
             if y <= 0:
-                safe_at = safe_at or t
-                y = 0
-            elif energy <= 0:
-                sank_at = sank_at or t
-            if safe_at is None and sank_at is None:
-                cx, cy = current(x, y)
-                if strategy == "fight":            # swim straight at the beach
-                    sx, sy, effort = 0, -swim_speed, 1.0
-                elif strategy == "parallel":       # swim parallel until free, then in
-                    in_rip = abs(x) < rip_half_width + 2 and y < rip_length
-                    sx, sy = (swim_speed, 0) if in_rip else (0, -swim_speed)
-                    effort = 1.0
-                else:                              # float and wave
-                    sx, sy, effort = 0, 0, 0.15
-                x += (sx + cx) * dt
-                y += (sy + cy) * dt
-                energy -= effort * dt
+                return "safe", t
+            if energy <= 0:
+                return "exhausted", t
+            if strategy == "fight":
+                sx, sy, effort = 0, -swim_speed, 1.0
+            elif strategy == "parallel":
+                sx, sy = (swim_speed, 0) if abs(x) < rip_half_width + 2 and y < rip_length else (0, -swim_speed)
+                effort = 1.0
+            else:
+                sx, sy, effort = 0, 0, 0.12
+            x += sx * dt
+            y += (sy + current(x, y)) * dt
+            energy -= effort * dt
             t += dt
-        return path, sank_at, safe_at
+        return "afloat", t_max
 
-    runs = {k: simulate(k) for k in ("fight", "parallel", "float")}
+    outcomes = {k: simulate(k) for k in ("fight", "parallel", "float")}
 
-    # Drag power while swimming: P = ½ ρ Cd A v³
-    rho, CdA = 1025, 0.35 * 0.12
-    p_swim = 0.5 * rho * CdA * swim_speed ** 3 / 0.08   # ~8% mechanical efficiency
-    net_fight = swim_speed - rip_speed
+    def outcome(k):
+        what, t = outcomes[k]
+        return {"safe": f"on the beach at t = {t:.0f} s", "exhausted": f"exhausted at t = {t:.0f} s",
+                "afloat": "still floating at 5 min, waving: easy to spot and rescue"}[what]
 
-    # Buoyancy: body density with full vs empty lungs
-    vol_body = 0.0703                                    # m^3 for 70 kg
-    dens_full = 70 / (vol_body + 0.003)                  # +3 L inhaled air
-    dens_empty = 70 / (vol_body - 0.0015)                # forced exhale: −1.5 L
-    buoy_full = (rho - dens_full) * (vol_body + 0.003) * G
+    # --- buoyancy: why you can't keep your head up --------------------------
+    head_vol, head_mass = 0.0045, 5.0
+    F_rest = (rho * body_vol - mass) * G                           # lungs at rest: whole body under
+    F_head_out = F_rest - rho * head_vol * G                       # lift the whole head clear
+    F_face_out = F_rest - rho * head_vol / 3 * G                   # float on your back, face only
+    vol_wet = body_vol - 0.0015                                    # breathed out to residual volume
+    m_wet = mass + 1.0                                             # ~1 L of water aspirated
+    F_sink = (rho * vol_wet - m_wet) * G                           # negative: you sink
+    CdA = 0.6 * 0.5                                                # a limp body tumbling
+    v_sink = math.sqrt(2 * abs(F_sink) / (rho * CdA))
+    p_swim = 0.5 * rho * 0.35 * 0.12 * swim_speed ** 3 / 0.08     # drag power / 8 % efficiency
 
-    # Cold shock / survival rough guide (US Coast Guard style curve)
-    exhaustion_h = max(0.25, 0.0785 * math.exp(0.1786 * water_temp_c))
+    # --- your path -----------------------------------------------------------
+    dt = 0.05
+    y, t, energy = float(start_offshore), 0.0, float(endurance_s)
+    while energy > 0:                                              # fighting straight for the beach
+        if y <= 0:
+            raise ValueError(f"with a {rip_speed} m/s rip you swim out of it and reach the beach: "
+                             "this story needs the rip to be faster than you (rip_speed > swim_speed)")
+        y += (current(0, y) - swim_speed) * dt
+        energy -= dt
+        t += dt
+    t_tired, y_tired = t, y
+    t_sub = t_tired + 40                                           # instinctive drowning response: 20–60 s
+    t_gasp = t_sub + 22                                            # breath-hold break point, exhausted
+    t_alert = t_sub + 18                                           # a friend notices you are gone
 
-    def track(name):
-        path, sank, _ = runs[name]
-        rows = []
-        for (t, x, y, e) in path:
-            z = 0.0
-            if sank is not None and t > sank:
-                z = -min(4.0, (t - sank) * 0.5)
-            rows.append([round(t, 3), round(x, 3), round(y, 3), round(z, 3), 0, 0, 0])
-        return rows
+    def you_y_drift(t0, y0, t1, k=1.0):
+        yy, tt = y0, t0
+        while tt < t1:
+            yy += k * current(0, yy) * dt
+            tt += dt
+        return yy
 
-    def outcome(name):
-        _, sank, safe = runs[name]
-        if safe is not None:
-            return f"reaches the beach at t = {safe:.0f} s"
-        if sank is not None:
-            return f"exhausted at t = {sank:.0f} s, then submerges"
-        return "still afloat at 240 s, waving for rescue"
+    y_sub = you_y_drift(t_tired, y_tired, t_sub)
+    y_gasp = you_y_drift(t_sub, y_sub, t_gasp)
+    hip_hang = -1.05                                               # head just under the surface
+    t_bottom = t_gasp + (hip_hang - (bed(y_gasp) + 0.14)) / v_sink
+    y_bottom = you_y_drift(t_gasp, y_gasp, t_bottom, 0.4)
+    depth = -bed(y_bottom)
 
-    duration = 240
+    # The lifeguard: from the tower, into the water, out *with* the rip, then a search.
+    lg_speed, tow_speed = 1.2, 0.8
+    t_run = t_alert + 3.0
+    t_wade = t_run + 2.5
+    yl, t = 6.0, t_wade
+    while yl < y_sub - 2:
+        yl += (lg_speed + current(0, yl)) * dt
+        t += dt
+    t_arrive = t
+    t_dive = t_arrive + 16                                         # last-seen point, murky water
+    t_grab = t_dive + (y_bottom - (y_sub - 2) + abs(depth)) / 1.1
+    t_surface = t_grab + abs(depth + 1.0) / 0.8
+    x_out = -(rip_half_width + 5)
+    t_side = t_surface + abs(x_out) / tow_speed
+    t_shore = t_side + (y_bottom - 1.0) / tow_speed
+    t_beach = t_shore + 7
+    t_cpr = t_beach + 8                                            # after 5 rescue breaths
+    t_rosc = t_cpr + 50
+    duration = t_rosc + 14
+    submerged = t_surface - t_sub
 
-    def path_series(name, col, every=12, scale=1.0):
-        path = runs[name][0]
-        return [[round(p[0], 3), round(max(0, p[col]) * scale, 3)] for p in path[::every]]
+    # --- oxygen: PaO2 falls while you can't breathe, SpO2 follows the dissociation curve
+    def pao2(t):
+        if t < t_tired:
+            return 95.0
+        if t < t_sub:
+            return 95 - 25 * (t - t_tired) / (t_sub - t_tired)        # snatched breaths, some water
+        p_low = 70 * math.exp(-(min(t, t_surface + 8) - t_sub) / 86)
+        if t < t_surface + 8:
+            return p_low
+        if t < t_beach:                                            # in-water rescue breaths while towing
+            return 45 + (p_low - 45) * math.exp(-(t - t_surface - 8) / 40)
+        p_b = 45 + (p_low - 45) * math.exp(-(t_beach - t_surface - 8) / 40)
+        if t < t_cpr:
+            return p_b
+        return 90 + (p_b - 90) * math.exp(-(t - t_cpr) / 25)
 
-    red = runs["fight"][0]
-    v_red = [[round(red[i][0], 3), round((red[i][2] - red[i - 12][2]) / (red[i][0] - red[i - 12][0]), 3)]
-             for i in range(12, len(red), 12)]
-    sank, safe_green = runs["fight"][1], runs["parallel"][2]
-    escape_t = (rip_half_width + 2) / swim_speed
+    def spo2(t):
+        p = pao2(t)
+        return 100 / (23400 / (p ** 3 + 150 * p) + 1)               # Severinghaus
+
+    # None when you're rescued before SpO2 falls below 60 %: you never black out
+    t_uncon = next((tt / 10 for tt in range(int(t_sub * 10), int(duration * 10)) if spo2(tt / 10) < 60), None)
+
+    # --- film pacing: 12× most of the time, real time for the moments that matter
+    story_speed = 12
+    slowmo = [[t_tired + 4, t_tired + 10, 1], [t_gasp - 2, t_gasp + 4, 1],
+              [t_surface + 4, t_shore - 4, 30], [t_cpr, t_cpr + 7, 1]]
+
+    ft_step, ft_table = 0.02, [0.0]                                # film seconds at every 20 ms of sim time
+    for i in range(int(duration / ft_step) + 2):
+        tt = i * ft_step
+        r = next((w[2] for w in slowmo if w[0] <= tt < w[1]), story_speed)
+        ft_table.append(ft_table[-1] + ft_step / r)
+
+    def film_time(t):
+        x = max(0.0, t) / ft_step
+        i = min(int(x), len(ft_table) - 2)
+        return ft_table[i] + (ft_table[i + 1] - ft_table[i]) * (x - i)
+
+    # --- poses ---------------------------------------------------------------
+    UP, SHORE, SEA, DOWN = (0, 0, 1), (0, -1, 0), (0, 1, 0), (0, 0, -1)
+    LEFT = (-1, 0, 0)                                              # along the beach, out of the rip
+
+    def turn(a, b, k, via):
+        """Direction part-way from a to b; goes through `via` so opposite directions never cancel."""
+        k = max(0.0, min(1.0, k))
+        if sum(x * y for x, y in zip(norm(a), norm(b))) < -0.9:
+            return norm(lerp(a, via, 2 * k)) if k < 0.5 else norm(lerp(via, b, 2 * k - 1))
+        return norm(lerp(a, b, k))
+
+    def pitch(theta):
+        """Upright and facing the sea at 0; head toward the sea at π/2; head down at π."""
+        return (0, math.cos(theta), -math.sin(theta)), (0, math.sin(theta), math.cos(theta))
+
+    def body(hip, f, u, hip_h=0.93):
+        u = norm(u)
+        d = sum(x * y for x, y in zip(f, u))
+        f = norm(tuple(x - d * y for x, y in zip(f, u)))           # make the face square to the spine
+        rx, ry, rz = pose_from_axes(f, u)
+        return (hip[0] - hip_h * u[0], hip[1] - hip_h * u[1], hip[2] - hip_h * u[2], rx, ry, rz)
+
+    def lying_z(y, u):
+        """Hip height for a body lying flat: clear of the seabed under the hips and the head."""
+        return max(bed(y), bed(y + 0.75 * u[1])) + 0.15
+
+    def ease(k):
+        k = max(0.0, min(1.0, k))
+        return k * k * (3 - 2 * k)
+
+    f_idr, swim_z, idr_z = norm(lerp(SHORE, UP, 0.15)), -0.12, -0.66
+
+    def you(t):
+        if t < t_tired:                                            # front crawl at the surface, toward the beach
+            yy = start_offshore + (y_tired - start_offshore) * t / t_tired
+            return body((0, yy, swim_z), DOWN, SHORE)
+        if t < t_sub:                                              # IDR: upright, head back, bobbing
+            k = (t - t_tired) / (t_sub - t_tired)
+            e = ease((t - t_tired) / 2.5)                          # 2.5 s to come upright
+            yy = y_tired + (y_sub - y_tired) * k
+            bob = e * (0.10 + 0.18 * k) * math.sin(math.tau * film_time(t) * 0.9)
+            z = swim_z + (idr_z - 0.25 * k - swim_z) * e + bob
+            return body((0, yy, z), turn(DOWN, f_idr, e, SHORE), turn(SHORE, lerp(UP, SHORE, 0.08 * k), e, UP))
+        if t < t_gasp:                                             # hanging just below the surface
+            k = (t - t_sub) / (t_gasp - t_sub)
+            yy = y_sub + (y_gasp - y_sub) * k
+            return body((0, yy, idr_z - 0.25 + (hip_hang - idr_z + 0.25) * k),
+                        lerp(f_idr, DOWN, 0.4 * k), lerp(lerp(UP, SHORE, 0.08), SHORE, 0.25 * k))
+        f_hang, u_hang = lerp(f_idr, DOWN, 0.4), lerp(lerp(UP, SHORE, 0.08), SHORE, 0.25)
+        if t < t_grab:                                             # sinking, then face down on the bottom
+            k = min(1.0, (t - t_gasp) / (t_bottom - t_gasp))
+            yy = y_gasp + (y_bottom - y_gasp) * k
+            u = lerp(u_hang, SHORE, ease(k))
+            z = hip_hang + (lying_z(yy, SHORE) - hip_hang) * k
+            return body((0, yy, max(z, lying_z(yy, norm(u)) if k > 0.8 else z)), lerp(f_hang, DOWN, ease(k)), u)
+        y_up = y_bottom - 0.6
+        if t < t_surface:                                          # brought up, rolled face to the sky
+            k = (t - t_grab) / (t_surface - t_grab)
+            z0 = lying_z(y_bottom, SHORE)
+            return body((0, y_bottom - 0.6 * k, z0 + (-0.1 - z0) * k),
+                        turn(DOWN, UP, k, (1, -1, 0)), turn(SHORE, LEFT, k, (-1, -1, 0)))
+        if t < t_side:                                             # towed sideways, out of the rip
+            k = (t - t_surface) / (t_side - t_surface)
+            return body((x_out * k, y_up, -0.1), UP, LEFT)
+        if t < t_shore:                                            # towed to the beach, head first
+            k = (t - t_side) / (t_shore - t_side)
+            yy = y_up + (1.0 - y_up) * k
+            u = turn(LEFT, SHORE, min(1, k * 5), (-1, -1, 0))
+            return body((x_out, yy, max(-0.1, lying_z(yy, u))), UP, u)
+        if t < t_beach:                                            # dragged up the sand
+            k = (t - t_shore) / (t_beach - t_shore)
+            yy = 1.0 - 5.0 * k
+            return body((x_out, yy, lying_z(yy, SHORE)), UP, SHORE)
+        return body((x_out, -4.0, lying_z(-4.0, SHORE)), UP, SHORE)
+
+    tower = (6.0, -12.0)
+    chest_beach = (x_out, -4.0 - 0.32)
+    wade_u = norm(lerp(UP, SEA, 0.25))
+
+    def lifeguard(t):
+        if t < t_alert:                                            # on the tower, watching
+            return body((tower[0], tower[1], bed(tower[1]) + 1.8 + 0.93), SEA, UP)
+        if t < t_run:                                              # down and across the sand
+            k = (t - t_alert) / (t_run - t_alert)
+            x, yy = tower[0] + (0.6 - tower[0]) * k, tower[1] * (1 - k)
+            return body((x, yy, bed(yy) + 0.93 + 1.8 * max(0.0, 1 - k * 3)), SEA, UP)
+        if t < t_wade:                                             # wading in, feet on the bottom
+            k = (t - t_run) / (t_wade - t_run)
+            yy = 6.0 * k
+            u = lerp(UP, wade_u, k)
+            return body((0.6, yy, bed(yy) + 0.93 * norm(u)[2] + 0.03), SEA, u)
+        if t < t_arrive:                                           # dives forward and swims out with the rip
+            e = ease((t - t_wade) / 1.5)
+            z0 = bed(6.0) + 0.93 * wade_u[2] + 0.03
+            k = (t - t_wade) / max(t_arrive - t_wade, 1e-6)           # you may have gone under close in
+            return body((0.6, 6.0 + (y_sub - 8.0) * k, z0 + (swim_z - z0) * e), turn(SEA, DOWN, e, SEA),
+                        turn(wade_u, SEA, e, SEA))
+        if t < t_dive:                                             # treading water, looking for you
+            e = ease((t - t_arrive) / 1.5)
+            look = norm(lerp(SEA, (1, 0, 0), 0.4 * math.sin((t - t_arrive) * 0.5)))
+            return body((0.6, y_sub - 2, swim_z + (-0.62 - swim_z) * e + 0.05 * math.sin(math.tau * film_time(t) * 0.7)),
+                        turn(DOWN, look, e, SEA), turn(SEA, UP, e, SEA))
+        if t < t_grab:                                             # duck dive, head first, down to you
+            k = (t - t_dive) / (t_grab - t_dive)
+            f, u = pitch(2.4 * ease(k * 2.5))
+            yy = (y_sub - 2) + (y_bottom - 1.2 - (y_sub - 2)) * k
+            z = -0.62 + ((lying_z(y_bottom, SHORE) + 0.75) + 0.62) * ease(k)
+            return body((0.6, yy, z), f, u)
+        if t < t_surface:                                          # kicks up with you
+            k = (t - t_grab) / (t_surface - t_grab)
+            f, u = pitch(2.4 * (1 - ease(k * 1.5)))
+            z0 = lying_z(y_bottom, SHORE) + 0.75
+            return body((0.6 + (-1.2 - 0.6) * k, (y_bottom - 1.2) + 0.6 * k, z0 + (-0.4 - z0) * k), f, u)
+        if t < t_side:                                             # tows you sideways
+            k = (t - t_surface) / (t_side - t_surface)
+            e = ease((t - t_surface) / 2.0)
+            return body((x_out * k - 1.2, y_bottom - 0.6, -0.4 + (swim_z + 0.4) * e), turn(SEA, DOWN, e, SEA),
+                        turn(UP, LEFT, e, UP))
+        if t < t_shore:                                            # and in to the beach
+            k = (t - t_side) / (t_shore - t_side)
+            yy = (y_bottom - 0.6) + (1.0 - y_bottom + 0.6) * k - 1.2
+            stand = ease((2.5 - yy) / 2.5)
+            u = turn(turn(LEFT, SHORE, min(1, k * 5), (-1, -1, 0)), UP, stand, SHORE)
+            return body((x_out, yy, max(swim_z, bed(yy) + 0.93 * u[2] + 0.06, lying_z(yy, u))), turn(DOWN, SHORE, stand, SHORE), u)
+        if t < t_beach:                                            # turns round, walks backwards dragging you
+            k = (t - t_shore) / (t_beach - t_shore)
+            yy = -0.2 - 5.0 * k
+            return body((x_out, yy, bed(yy) + 0.93), turn(SHORE, SEA, ease(k * 3), (1, 0, 0)), UP)
+        # kneeling at your side: 5 breaths at your head, then compressions on the chest.
+        # Hips 0.51 m up, torso leaning 35° over you: each 5 cm push brings the hands onto your sternum,
+        # and the legs (62° from vertical) keep the feet on the sand even at the bottom of a push.
+        hip = (chest_beach[0] - 0.45, chest_beach[1], bed(-4.3) + 0.51)
+        e = ease((t - t_beach) / 1.2)
+        lean = math.radians(35)
+        u_k = (math.sin(lean), 0, math.cos(lean))
+        f_k = (math.cos(lean), 0, -math.sin(lean))
+        if t < t_cpr:
+            bump = 0.04 * math.sin(math.tau * (t - t_beach) / 1.6)
+            stand = (x_out, -5.2, bed(-5.2) + 0.93)
+            target = (hip[0] + 0.05, hip[1] - 0.4, hip[2] + bump)       # at your head for the breaths
+            lean_b = math.radians(55)
+            return body(lerp(stand, target, e), turn(SEA, (math.cos(lean_b), 0, -math.sin(lean_b)), e, (1, 0, 0)),
+                        turn(UP, (math.sin(lean_b), 0, math.cos(lean_b)), e, UP))
+        push = 0.05 * max(0.0, math.sin(math.tau * 1.85 * (t - t_cpr))) if t < t_rosc else 0.0
+        k = ease((t - t_cpr) / 1.0)
+        return body(lerp((hip[0] + 0.05, hip[1] - 0.4, hip[2]), (hip[0], hip[1], hip[2] - push), k), f_k, u_k)
+
+    def joints_you(t):
+        ph = math.tau * film_time(t) * 0.75
+        if t < t_tired:                                            # crawl arms, flutter kick
+            return {"shoulder_L": (0, -math.pi + ph, 0), "shoulder_R": (0, ph, 0),
+                    "hip_L": (0, 0.3 * math.sin(3 * ph), 0), "hip_R": (0, -0.3 * math.sin(3 * ph), 0), "neck": (0, 0.25, 0)}
+        if t < t_sub:                                              # arms pressing down at the sides, head back
+            flap = 0.3 * math.sin(math.tau * film_time(t) * 1.2)
+            return {"shoulder_L": (1.2 + flap, -0.2, 0), "shoulder_R": (-1.2 - flap, -0.2, 0),
+                    "hip_L": (0, 0.12 * math.sin(ph), 0), "hip_R": (0, -0.12 * math.sin(ph), 0), "neck": (0, -0.55, 0)}
+        if t < t_surface:                                          # limp
+            return {"shoulder_L": (0.45, -0.5, 0), "shoulder_R": (-0.45, -0.5, 0),
+                    "hip_L": (0.05, -0.15, 0), "hip_R": (-0.05, -0.1, 0), "neck": (0, 0.35, 0)}
+        return {"shoulder_L": (0.25, 0, 0), "shoulder_R": (-0.25, 0, 0),
+                "hip_L": (0.04, 0, 0), "hip_R": (-0.04, 0, 0), "neck": (0, -0.25, 0)}
+
+    def joints_lifeguard(t):
+        ph = math.tau * film_time(t) * 0.9
+        if t < t_alert:
+            return {"shoulder_L": (0.1, 0, 0), "shoulder_R": (-0.1, 0, 0), "hip_L": (0, 0, 0), "hip_R": (0, 0, 0), "neck": (0, 0, 0)}
+        if t < t_wade:                                             # running
+            s_ = math.sin(ph * 2)
+            return {"shoulder_L": (0.1, 0.7 * s_, 0), "shoulder_R": (-0.1, -0.7 * s_, 0),
+                    "hip_L": (0, -0.6 * s_, 0), "hip_R": (0, 0.6 * s_, 0), "neck": (0, 0, 0)}
+        if t < t_arrive or t_surface <= t < t_shore:               # front crawl
+            # the kick shrinks in the shallows so the feet don't dig into the sand
+            kick = 0.3 * max(0.0, min(1.0, (-bed(lifeguard(t)[1]) - 0.3) / 0.8))
+            return {"shoulder_L": (0, -math.pi + ph, 0), "shoulder_R": (0, ph, 0),
+                    "hip_L": (0, kick * math.sin(3 * ph), 0), "hip_R": (0, -kick * math.sin(3 * ph), 0), "neck": (0, 0.3, 0)}
+        if t < t_dive:                                             # treading water
+            s_ = math.sin(ph * 1.5)
+            return {"shoulder_L": (1.3 + 0.2 * s_, 0, 0), "shoulder_R": (-1.3 - 0.2 * s_, 0, 0),
+                    "hip_L": (0, 0.4 * s_, 0), "hip_R": (0, -0.4 * s_, 0), "neck": (0, 0, 0)}
+        if t < t_surface:                                          # diving: arms reach ahead
+            return {"shoulder_L": (0, -math.pi + 0.3, 0), "shoulder_R": (0, -math.pi + 0.3, 0),
+                    "hip_L": (0, 0.35 * math.sin(3 * ph), 0), "hip_R": (0, -0.35 * math.sin(3 * ph), 0), "neck": (0, 0, 0)}
+        if t < t_beach:
+            return {"shoulder_L": (0.2, -0.8, 0), "shoulder_R": (-0.2, -0.8, 0),
+                    "hip_L": (0, 0.4 * math.sin(ph), 0), "hip_R": (0, -0.4 * math.sin(ph), 0), "neck": (0, 0, 0)}
+        # kneeling: arms straight down onto your chest (52° forward of the leaning torso),
+        # legs folded back so the feet reach the sand
+        return {"shoulder_L": (0.12, -0.9, 0), "shoulder_R": (-0.12, -0.9, 0),
+                "hip_L": (0, 0.47, 0), "hip_R": (0, 0.47, 0), "neck": (0, 0.35, 0)}
+
+    def head_depth(t):
+        x, yy, z, rx, ry, rz = you(t)
+        cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+        uz = cy * cx                                               # actor z-axis, world z component
+        return max(0.0, -(z + 1.6 * uz))
+
+    dense = [w for w in slowmo if w[2] <= 1]                       # real-time windows need dense keys
+    rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
+    rows_lg = unwrap(sample(lifeguard, duration, dense=dense), (4, 5, 6))
+
+    def joint_rows(fn):
+        ts = sorted({r[0] for r in rows_you})
+        out = {}
+        for tt in ts:
+            for name, rot in fn(tt).items():
+                out.setdefault(name, []).append([tt] + [round(c, 4) for c in rot])
+        return {k: unwrap(v, (1, 2, 3)) for k, v in out.items()}
+
     story = {
-        "speed": 8,                                   # 8x real time, no slow-motion
+        "speed": story_speed,
+        "slowmo": slowmo,
         "series": {
-            "y_fight": path_series("fight", 2), "y_parallel": path_series("parallel", 2),
-            "y_float": path_series("float", 2), "v_red": v_red,
-            "e_fight": path_series("fight", 3), "e_parallel": path_series("parallel", 3),
+            "spo2": series(spo2, duration, dt=0.5),
+            "depth": series(head_depth, duration, dt=0.5),
+            "y_you": series(lambda t: max(0.0, you(t)[1] + 0.93), duration, dt=0.5),
+            "y_lifeguard": series(lambda t: max(0.0, lifeguard(t)[1]), duration, dt=0.5),
         },
-        "hud": [{"sym": "v_net", "series": "v_red", "unit": "m/s", "fmt": "{:+.2f}",
-                 "note": "red swimmer, + means out to sea"},
-                {"sym": "d_red", "series": "y_fight", "unit": "m", "fmt": "{:.0f}"}],
+        "hud": [{"sym": "SpO₂", "series": "spo2", "unit": "%", "fmt": "{:.0f}", "note": "oxygen in your blood"},
+                {"sym": "depth", "series": "depth", "unit": "m", "fmt": "{:.1f}"}],
         "captions": [
-            [0, "Caught in a rip.", f"{rip_speed} m/s current  ·  the swimmer manages {swim_speed} m/s"],
-            [8, "Red swims for the beach.", f"v_net = {swim_speed} − {rip_speed} = {net_fight:+.1f} m/s: going backwards"],
-            [escape_t, "Green swims sideways.", f"out of the rip in {escape_t:.0f} s, then turns for shore"],
-            [safe_green or 80, "Green is on the beach.", f"t = {safe_green or 0:.0f} s"],
-            [sank or 150, "Red is exhausted.", f"{sank or 0:.0f} s fighting a current that couldn't be beaten"],
-            [(sank or 150) + 25, "Yellow is still floating.", "flip · float · follow  ·  wave for help"],
+            [0, f"You're {start_offshore} m out. The water pulls.",
+             f"a rip current: {rip_speed} m/s out to sea, faster than you can swim"],
+            [6, "You swim for the beach.",
+             f"{swim_speed} − {rip_speed} = {swim_speed - rip_speed:+.1f} m/s: you go backwards, burning {p_swim:.0f} W"],
+            [t_tired, "Your arms give out.", f"{endurance_s} s of hard swimming. You're {y_tired:.0f} m out"],
+            [t_tired + 4, "Instinctive drowning response.", "upright, head back, arms pressing down. You can't shout or wave"],
+            [t_sub, "You go under.", f"holding your whole head up costs {-F_head_out:.0f} N more than your lungs give"],
+            [t_gasp, "The breath-hold breaks.", "an involuntary gasp pulls water into your airway"],
+            [t_gasp + 6, "You sink.", f"lungs empty, water in: {F_sink:+.1f} N, down at {v_sink:.2f} m/s"],
+            *([[t_uncon, "You black out.", f"SpO₂ under 60% after {t_uncon - t_sub:.0f} s underwater"]]
+              if t_uncon is not None else []),
+            [t_alert, "Someone notices you're gone.", "the lifeguard rides the rip out: "
+             f"{lg_speed} + {rip_speed} = {lg_speed + rip_speed:.1f} m/s"],
+            [t_grab, f"Found, {depth:.1f} m down.", f"{t_grab - t_sub:.0f} s after you went under"],
+            [t_surface + 3, "Towed sideways, out of the rip.", "then in to the beach, with rescue breaths on the way"],
+            [t_beach, "5 rescue breaths first.", "drowning stops the heart through lack of oxygen"],
+            [t_cpr + 8, "Then 30 compressions : 2 breaths.", "5–6 cm deep, 100–120 a minute"],
+            [t_rosc, "A cough. A pulse.", "what would have saved you: flip onto your back, float, follow the current"],
         ],
         "callouts": [
-            [0, 240, None, [0, rip_length * 0.55, 0], f"rip current {rip_speed} m/s"],
-            [0, 70, "swimmer_fight", [0, 0, 0], "fights the rip"],
-            [0, 60, "swimmer_parallel", [0, 0, 0], "swims parallel"],
-            [0, 240, "swimmer_float", [0, 0, 0], "floats"],
+            [0, t_tired, None, [0, 45, 0.3], f"rip current {rip_speed} m/s"],
+            [2, t_tired, "you", [0, 0, 1.6], f"v_net = {swim_speed - rip_speed:+.1f} m/s"],
+            [t_tired + 2, t_sub, "you", [0, 0, 1.62], "can't shout, can't wave"],
+            [t_gasp - 1, t_gasp + 12, "you", [0, 0, 1.55], "water in the airway"],
+            [t_bottom, t_grab, "you", [0, 0, 1.2], f"{depth:.1f} m down"],
+            [t_alert, t_arrive, "lifeguard", [0, 0, 1.75], "lifeguard"],
+            [t_beach, t_rosc + 10, "lifeguard", [0, 0, 1.5], "rescue breaths, then CPR"],
         ],
         "graphs": [
-            {"title": "distance offshore (m)",
-             "lines": [["y_fight", "red", "accent"], ["y_parallel", "green", "green"], ["y_float", "yellow", "amber"]]},
-            {"title": "energy left (s of hard swimming)",
-             "lines": [["e_fight", "red", "accent"], ["e_parallel", "green", "green"]]},
+            {"title": "distance from the beach (m)",
+             "lines": [["y_you", "you", "accent"], ["y_lifeguard", "lifeguard", "ink"]]},
+            {"title": "blood oxygen SpO₂ (%)", "lines": [["spo2", "you", "accent"]],
+             "refs": [[90, "hypoxia"], [60, "unconscious"]]},
         ],
-        "eqs": [f"v_net = v_swim − v_rip = {net_fight:+.1f} m/s",
-                f"P = ½ρC_dAv³ / η = {p_swim:.0f} W",
-                f"escape: {rip_half_width + 2} m ÷ {swim_speed} m/s = {escape_t:.0f} s"],
+        "eqs": [f"v_net = v_swim − v_rip = {swim_speed - rip_speed:+.1f} m/s",
+                f"F_b = (ρV − m)g = {F_rest:+.0f} N   head out: {F_head_out:+.0f} N",
+                f"v_sink = √(2|F| / ρC_dA) = {v_sink:.2f} m/s"],
     }
+    story["captions"].sort(key=lambda c: c[0])
     return {
         "story": story,
         "id": "drowning", "title": "Drowning in a rip current",
-        "inputs": dict(rip_speed_ms=rip_speed, swim_speed_ms=swim_speed,
-                       rip_width_m=2 * rip_half_width, start_offshore_m=start_offshore,
-                       hard_swim_endurance_s=endurance_s, water_temp_c=water_temp_c),
+        "inputs": dict(rip_speed_ms=rip_speed, swim_speed_ms=swim_speed, rip_width_m=2 * rip_half_width,
+                       start_offshore_m=start_offshore, hard_swim_endurance_s=endurance_s,
+                       water_temp_c=water_temp_c, mass_kg=mass),
         "results": [
-            ("Net speed swimming straight at the beach", net_fight, "m/s",
-             "v_net = v_swim − v_rip. A negative number means you go backwards"),
-            ("Metabolic power to swim at 1 m/s", p_swim, "W", "P = ½ρCdAv³ / efficiency (~8%)"),
-            ("Time to escape sideways", (rip_half_width + 2) / swim_speed, "s", "Rip width / 2 ÷ swim speed"),
-            ("Buoyant force with full lungs", buoy_full, "N", "(ρ_water − ρ_body)·V·g. Positive means you float"),
-            ("Body density with full lungs", dens_full, "kg/m³", "Sea water is 1025. Below that you float"),
-            ("Body density after exhaling", dens_empty, "kg/m³", "Closer to water: panic and lost air make you sink"),
-            ("Strategy A (fight)", 0, "", outcome("fight")),
-            ("Strategy B (swim parallel)", 0, "", outcome("parallel")),
-            ("Strategy C (float)", 0, "", outcome("float")),
-            ("Expected survival time in water", exhaustion_h, "h", f"Rough cold-water curve at {water_temp_c} °C"),
+            ("Your net speed swimming for the beach", swim_speed - rip_speed, "m/s",
+             "v_net = v_swim − v_rip. Negative: the rip wins"),
+            ("Metabolic power to swim at 1 m/s", p_swim, "W", "P = ½ρC_dAv³ / efficiency (~8%)"),
+            ("Time until your arms give out", t_tired, "s", f"{endurance_s} s of hard swimming for an untrained adult"),
+            ("Buoyancy with lungs at rest", F_rest, "N", "(ρ_water·V − m)·g. Positive: you float"),
+            ("Buoyancy with your whole head out", F_head_out, "N", "the head's 4.5 L no longer helps: negative, you sink"),
+            ("Buoyancy floating on your back, face out", F_face_out, "N", "only a third of the head out: still positive"),
+            ("Buoyancy after breathing out and inhaling water", F_sink, "N", "residual lungs, ~1 L of water: you sink"),
+            ("Sinking speed", v_sink, "m/s", "terminal velocity: v = √(2|F| / ρC_dA)"),
+            ("Time under water before rescue", submerged, "s", "brain injury starts after 4–6 min in warm water"),
+            ("Unconscious after", t_uncon - t_sub, "s", "SpO₂ below 60% (Severinghaus curve from falling PaO₂)")
+            if t_uncon is not None else ("Unconscious", 0, "", "never: rescued before SpO₂ fell below 60%"),
+            ("If you fight the rip", 0, "", outcome("fight")),
+            ("If you swim parallel to the beach", 0, "", outcome("parallel")),
+            ("If you float and wave", 0, "", outcome("float")),
         ],
         "tables": {"Hypoxia timeline after going under": {
             "columns": ["Time", "What happens in the body"],
-            "rows": [["0–60 s", "Breath-hold. CO₂ rises. Panic"],
-                     ["60–90 s", "Involuntary gasp: water enters the airway. Laryngospasm"],
-                     ["~2 min", "Unconscious. SpO₂ < 60%"],
-                     ["3–4 min", "Bradycardia, then cardiac arrest (PEA/asystole)"],
+            "rows": [["0–60 s", "Breath-hold. CO₂ rises, panic"],
+                     ["20–60 s", "Involuntary gasp: water enters the airway. Laryngospasm"],
+                     ["~1–2 min", "Unconscious. SpO₂ < 60%"],
+                     ["3–4 min", "Slow heart, then cardiac arrest (PEA/asystole)"],
                      ["4–6 min", "Irreversible brain injury begins (warm water)"],
                      ["> 30 min", "Survival rare, except in ice-cold water (hypothermia protects the brain)"]]}},
-        "anim": {"fps": FPS, "duration": duration, "time_scale": 8,
-                 "actors": {"swimmer_fight": track("fight"),
-                            "swimmer_parallel": track("parallel"),
-                            "swimmer_float": track("float")},
+        "anim": {"fps": FPS, "duration": duration,
+                 "actors": {"you": rows_you, "lifeguard": rows_lg},
+                 "joints": {"you": joint_rows(joints_you), "lifeguard": joint_rows(joints_lifeguard)},
+                 "seabed": seabed, "tower": list(tower),
                  "rip": {"half_width": rip_half_width, "length": rip_length}},
     }
 

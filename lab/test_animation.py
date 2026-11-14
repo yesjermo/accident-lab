@@ -81,13 +81,54 @@ def frames(s, step=1 / 600):
 for s in [f() for f in physics.ALL]:
     print(s["id"])
     actors = s["anim"]["actors"]
-    if s["id"] != "drowning":
+    if s["id"] == "drowning":
+        bed = s["anim"]["seabed"]
+        rig_turn = rot(0, 0, math.pi / 2)                    # the swimmer rig faces the actor's +y
+
+        def rig_points(who, t):
+            """Body points in the actor frame. Knees and feet hang from the hip joint, so they
+            follow its rotation (crawl kick, kneeling) instead of assuming straight legs."""
+            hip_rot = rot(*interp(s["anim"]["joints"][who]["hip_L"], t)[1:])
+            pts = []
+            for name, (p, r) in BODY.items():
+                if name in ("knee", "foot"):
+                    rel = (0.0, 0.0, p[2] - 0.93)
+                    p = [(0, 0, 0.93)[i] + sum(hip_rot[i][j] * rel[j] for j in range(3)) for i in range(3)]
+                pts.append((name, [sum(rig_turn[i][j] * p[j] for j in range(3)) for i in range(3)], r))
+            return pts
+        for who in ("you", "lifeguard"):
+            worst = (1e9, 0, "")
+            for t in frames(s, 1 / 24):
+                row = interp(actors[who], t)
+                for name, p, r in rig_points(who, t):
+                    x, y, z = world(row, p)
+                    worst = min(worst, (z - r - interp(bed, y)[1], t, name))
+            check(worst[0] > -0.03, f"{who} never inside the seabed (lowest {worst[0]:+.3f} m: {worst[2]} at t={worst[1]:.1f})")
+        caps = [c[0] for c in s["story"]["captions"]]
+        check(caps == sorted(caps), "captions in time order")
+    else:
         rows = actors["victim"]
         lowest = min((world(interp(rows, t), p)[2] - r, t, name)
                      for t in frames(s) for name, (p, r) in BODY.items())
         check(lowest[0] > -0.03, f"never below the ground (lowest {lowest[0]:+.3f} m: {lowest[2]} at t={lowest[1]:.3f})")
-    for t0, t1, _ in s["story"].get("slowmo", []):
-        keys = sum(1 for r in next(iter(actors.values())) if t0 <= r[0] <= t1)
+    # Euler angles near gimbal lock can swing wildly between two keys even when the poses are close:
+    # the interpolated midpoint must stay between its two keys.
+    def angle(a, b):
+        tr = sum(a[i][j] * b[i][j] for i in range(3) for j in range(3))
+        return math.acos(max(-1.0, min(1.0, (tr - 1) / 2)))
+    for who in [w for w in s["anim"]["actors"] if w in ("victim", "you", "lifeguard")]:
+        rows = s["anim"]["actors"][who]
+        worst = (0.0, 0)
+        for r0, r1 in zip(rows, rows[1:]):
+            m0, m1 = rot(*r0[4:7]), rot(*r1[4:7])
+            mid = rot(*[(a + b) / 2 for a, b in zip(r0[4:7], r1[4:7])])
+            excess = max(angle(m0, mid), angle(mid, m1)) - angle(m0, m1)
+            worst = max(worst, (excess, r0[0]))
+        check(worst[0] < 0.05, f"{who}: no rotation glitches between keys (worst {worst[0]:.3f} rad at t={worst[1]:.2f})")
+    for t0, t1, rate in s["story"].get("slowmo", []):
+        if rate > 1:                               # a fast-forward window needs no extra keys
+            continue
+        keys = sum(1 for row in next(iter(actors.values())) if t0 <= row[0] <= t1)
         check(keys >= (t1 - t0) * 300, f"slow motion {t0:.2f}-{t1:.2f} s has {keys} keys (needs one per film frame)")
 
     if s["id"] == "pedestrian":
