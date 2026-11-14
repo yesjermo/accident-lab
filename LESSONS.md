@@ -329,6 +329,7 @@ Every scenario below lands in the same primary survey, done in this order becaus
 - `mass_kg` = 70
 - `burned_areas` = ['front_torso', 'right_arm', 'left_arm']
 - `heat_flux_kW_m2` = 20
+- `room_area_m2` = 24.0
 
 ### Physics and engineering
 
@@ -338,6 +339,8 @@ Every scenario below lands in the same primary survey, done in this order becaus
 | Parkland fluid, 24 h | **10080 mL** | 4 mL × kg × %TBSA of Ringer's lactate |
 | Of which in first 8 h | **5,040 mL** | Half of it, timed from the burn, not from arrival |
 | Time to full-thickness skin damage | **1.91 s** | Semi-infinite solid conduction at 20 kW/m² |
+| Fire size when you notice it | **169 kW** | t² growth, α = 0.047 kW/s², burning for 60 s |
+| Smoke layer when you reach the door | **1.46 m** | plume entrainment ṁ = 0.071·Q^⅓·z^⁵ᐟ³ filling the room |
 | Smoke at head height | CO and cyanide kill more fire victims than flames. Crawl low |  |
 
 **Radiant heat**

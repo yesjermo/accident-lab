@@ -705,6 +705,17 @@ def make_camera(lens):
     return cam
 
 
+def actor_hip(s, name, hip_h=0.93):
+    """World position of an actor's hips (the origin is between the feet): what a camera should follow
+    when the body runs, rolls or crawls ahead of its feet."""
+    rows = s["anim"]["actors"][name]
+
+    def at(t):
+        r = interp(rows, t)
+        return Vector(r[:3]) + Euler(r[3:6], "XYZ").to_matrix() @ Vector((0, 0, hip_h))
+    return at
+
+
 def actor_pos(s, name, lift=0.0):
     rows = s["anim"]["actors"][name]
     return lambda t: Vector(interp(rows, t)[:3]) + Vector((0, 0, lift))
@@ -891,35 +902,71 @@ def scene_electrocution(s, times):
 
 
 def scene_burns(s, times):
+    """Your living room: the sofa burning, smoke filling from the ceiling, you on fire, then stop, drop, roll."""
+    an = s["anim"]
+    sx, sy = an["sofa"]
+    dx, dy = an["door"]
     prim("plane", "floor", (0, 0, 0), (9, 6, 1), mat=clay(ROAD))
-    prim("cube", "wall_back", (0, 6, 1.5), (9, 0.1, 1.5), mat=clay(CLAY))
-    prim("cube", "wall_left", (-9, 0, 1.5), (0.1, 6, 1.5), mat=clay(CLAY))
-    prim("cube", "window", (2.5, 5.88, 1.7), (1.1, 0.05, 0.7), mat=clay(GLASS, rough=0.1))
-    prim("cube", "door", (6.5, 5.88, 1.05), (0.55, 0.05, 1.05), mat=clay(CLAY_DARK))
-    prim("cube", "sofa", (-5, 4.6, 0.3), (1.5, 0.55, 0.3), mat=clay(CLAY), bevel=0.08)
-    prim("cube", "sofa_back", (-5, 5.1, 0.75), (1.5, 0.15, 0.4), mat=clay(CLAY), bevel=0.06)
+    for i in range(-8, 9, 2):                                     # floorboards, for scale and speed
+        prim("cube", f"board{i}", (i, 0, 0.002), (0.01, 6, 0.002), mat=clay(CLAY_DARK))
+    prim("cube", "wall_back_l", ((-9 + dx - 0.6) / 2, 6, 1.4), ((dx - 0.6 + 9) / 2, 0.1, 1.4), mat=clay(CLAY))
+    prim("cube", "wall_back_r", ((dx + 0.6 + 9) / 2, 6, 1.4), ((9 - dx - 0.6) / 2, 0.1, 1.4), mat=clay(CLAY))
+    prim("cube", "lintel", (dx, 6, 2.45), (0.6, 0.1, 0.35), mat=clay(CLAY))
+    prim("cube", "wall_left", (-9, 0, 1.4), (0.1, 6, 1.4), mat=clay(CLAY))
+    prim("cube", "window", (-1.5, 5.88, 1.6), (1.1, 0.05, 0.6), mat=clay(GLASS, rough=0.1))
+    prim("cube", "door_open", (dx + 0.55, 6.5, 1.05), (0.04, 0.55, 1.05), mat=clay(CLAY_DARK))
+    prim("cube", "sofa", (sx, sy, 0.3), (1.5, 0.55, 0.3), mat=clay(CLAY), bevel=0.08)
+    prim("cube", "sofa_back", (sx, sy + 0.5, 0.75), (1.5, 0.15, 0.4), mat=clay(CLAY), bevel=0.06)
+    prim("cube", "lamp_table", (sx + 2.2, sy, 0.3), (0.3, 0.3, 0.3), mat=clay(CLAY_DARK), bevel=0.02)
     fire, fire2 = flat(ACCENT), flat((235, 120, 40))
     for i in range(7):
-        prim("cone", f"sofa_fire{i}", (-6.2 + i * 0.4, 4.6, 0.9 + (i % 3) * 0.15), (0.22, 0.22, 0.5 + (i % 2) * 0.25),
-             mat=fire if i % 2 else fire2, vertices=12)
-    for i in range(9):
-        prim("uv_sphere", f"smoke{i}", (-7 + i * 1.6, 4.6 + (i % 3) * 0.4, 2.8 + (i % 2) * 0.2),
-             (1.1, 0.9, 0.45), mat=clay((214, 214, 214)), smooth=True)
+        o = prim("cone", f"sofa_fire{i}", (sx - 1.2 + i * 0.4, sy, 0.9 + (i % 3) * 0.15),
+                 (0.22, 0.22, 0.5 + (i % 2) * 0.25), mat=fire if i % 2 else fire2, vertices=12)
+        o["flame"] = True
+        o["part"] = "sofa"
+    # the smoke layer: puffs under the ceiling whose bottom follows physics (actor "smoke")
+    smoke = empty("smoke")
+    for i in range(14):
+        prim("uv_sphere", f"smoke{i}", (-8 + i * 1.25, -4.5 + (i * 3.7) % 10, 0.45 + (i % 2) * 0.15),
+             (1.1, 0.95, 0.45), mat=clay((206, 206, 206)), smooth=True, parent=smoke)
     pl = bpy.data.lights.new("fire_light", "POINT")
     pl.energy = 800
     pl.color = (1, 0.5, 0.25)
     po = bpy.data.objects.new("fire_light", pl)
-    po.location = (-5, 4, 1.4)
+    po.location = (sx, sy - 0.6, 1.4)
     bpy.context.view_layer.active_layer_collection.collection.objects.link(po)
-    v = dummy("victim", accent_parts=tuple(s["anim"]["burned_parts"]), cap=False)
-    animate_actor(v, s["anim"]["actors"]["victim"], times)
-    for i, (dx, dy, dz) in enumerate([(0.05, 0, 1.35), (0.0, 0.18, 1.15), (0.0, -0.18, 1.15), (0.08, 0.1, 1.55)]):
-        fl = prim("cone", f"body_fire{i}", (dx, dy, dz), (0.12, 0.12, 0.3), mat=fire2 if i % 2 else fire,
-                  parent=v, vertices=10)
-        fl["flame"] = True
+
+    you = rig("you", CLAY_DARK)
+    # burn patches: crimson skins over each part, shown once that skin passes 60 °C
+    hot = clay(ACCENT, rough=0.7)
+    for side, part, sgn in (("L", "left_arm", 1), ("R", "right_arm", -1)):
+        sh = bpy.data.objects[f"you_shoulder_{side}"]
+        prim("cylinder", f"burn_{part}_u", (0, 0.03 * sgn, -0.15), (0.047, 0.047, 0.125), rot=(0.12 * sgn, 0, 0),
+             mat=hot, parent=sh, vertices=20)["part"] = part
+        prim("cylinder", f"burn_{part}_f", (0, 0.06 * sgn, -0.43), (0.041, 0.041, 0.115), mat=hot, parent=sh,
+             vertices=20)["part"] = part
+        for j, z in enumerate((-0.2, -0.45)):                     # flames on the sleeve
+            o = prim("cone", f"you_fire_{part}{j}", (0.04, 0.05 * sgn, z), (0.07, 0.07, 0.2),
+                     mat=fire2 if j else fire, parent=sh, vertices=10)
+            o["flame"] = True
+            o["part"] = part
+    body = bpy.data.objects["you_body"]
+    prim("cube", "burn_front_torso", (0.035, 0, 1.25), (0.08, 0.175, 0.205), mat=hot, parent=body,
+         bevel=0.05)["part"] = "front_torso"
+    for j, (yy, zz) in enumerate(((0.08, 1.3), (-0.08, 1.15), (0.0, 1.45))):
+        o = prim("cone", f"you_fire_torso{j}", (0.13, yy, zz), (0.09, 0.09, 0.26), mat=fire if j % 2 else fire2,
+                 parent=body, vertices=10)
+        o["flame"] = True
+        o["part"] = "front_torso"
+
+    animate_actor(you, an["actors"]["you"], times)
+    animate_joints(you, an["joints"]["you"], times)
+    animate_actor(smoke, an["actors"]["smoke"], times)
+
     cam = make_camera(30)
-    track = actor_pos(s, "victim", 0.7)
-    mats = animate_camera(cam, times, track, lambda g: (g.x + 2.6, g.y - 6.5, 1.9), smooth=0.1)
+    hip = actor_hip(s, "you")
+    mats = animate_camera(cam, times, lambda t: tuple(hip(t) + Vector((0, 0, 0.15))),
+                          lambda g: (g.x + 2.2, g.y - 6.2, 1.3), smooth=0.25)
     return cam, mats
 
 
@@ -946,14 +993,22 @@ def scene_extras(sid):
                 show(o, t >= an["t_aed"])
         return upd
     if sid == "burns":
-        fl = [o for o in objs if o.get("flame")]
+        an = DATA[sid]["anim"]
+        flames = [o for o in objs if o.get("flame")]
+        burns = [o for o in objs if o.name.startswith("burn_")]
+        base = {o.name: tuple(o.scale) for o in flames}
 
         def upd(fi, t):
-            k = 1.0 if t < 3.6 else max(0.0, (4.4 - t) / 0.8)
-            for i, o in enumerate(fl):
+            size = interp(an["flame"], t)[0]                      # physics: catch, grow while running, die rolling
+            for i, o in enumerate(flames):
+                part = o["part"]
+                k = 1.0 if part == "sofa" else (size if t >= an["ignite"].get(part, math.inf) else 0.0)
                 wob = 1 + 0.18 * math.sin(fi * 1.7 + i * 2.1)
-                o.scale = (0.12 * k * wob, 0.12 * k * wob, 0.3 * k * (1 + 0.3 * math.sin(fi * 2.3 + i)))
+                sx_, sy_, sz_ = base[o.name]
+                o.scale = (sx_ * k * wob, sy_ * k * wob, sz_ * k * (1 + 0.3 * math.sin(fi * 2.3 + i)))
                 show(o, k > 0.02)
+            for o in burns:                                       # the skin under it passes 60 °C (burned parts only)
+                show(o, t >= an["burn_at"].get(o["part"], math.inf))
         return upd
     return None
 
@@ -1034,7 +1089,7 @@ def export_glb(sid, sc, world_coll, times, extra):
     Effects the frame handler makes (sparks blinking, flames flickering) are baked
     into scale keys, because glTF has no visibility channel."""
     fx = [o for o in world_coll.all_objects
-          if o.name.startswith(("spark", "bolt", "current", "ring", "aed_")) or o.get("flame")]
+          if o.name.startswith(("spark", "bolt", "current", "ring", "aed_", "burn_")) or o.get("flame")]
     if extra and fx:
         base = {o.name: tuple(o.scale) for o in fx}
         for f in range(1, len(times) + 1):

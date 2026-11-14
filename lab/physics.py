@@ -345,6 +345,16 @@ def rig_pose(hip, f, u, hip_h=0.93):
     return (hip[0] - hip_h * u[0], hip[1] - hip_h * u[1], hip[2] - hip_h * u[2], rx, ry, rz)
 
 
+def interp_pairs(pairs, t):
+    """Linear interpolation in [(t, v), ...] sorted by t."""
+    if t <= pairs[0][0]:
+        return pairs[0][1]
+    for (t0, v0), (t1, v1) in zip(pairs, pairs[1:]):
+        if t <= t1:
+            return v0 + (v1 - v0) * (t - t0) / (t1 - t0)
+    return pairs[-1][1]
+
+
 def euler_matrix(rx, ry, rz):
     """Blender XYZ Euler as a matrix: R = Rz · Ry · Rx."""
     cx, sx, cy, sy, cz, sz = math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
@@ -1152,14 +1162,18 @@ def electrocution(voltage=120, condition="wet", contact_s=2.2, mass=70):
 # ---------------------------------------------------------------------------
 # 5. Burns in a house fire
 # ---------------------------------------------------------------------------
-def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw=20):
+def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw=20, room_area=24.0):
+    """Your sofa is on fire. You try to beat it out, your clothes catch, you run, then stop, drop and roll,
+    and crawl out under the smoke. x = across the room (door side +), y = toward the back wall, z = up."""
     rule_of_nines = {"head": 9, "right_arm": 9, "left_arm": 9, "front_torso": 18,
                      "back_torso": 18, "right_leg": 18, "left_leg": 18, "groin": 1}
     tbsa = sum(rule_of_nines[b] for b in burned)
     parkland = 4 * mass * tbsa                       # mL over 24 h
 
-    # Skin as a semi-infinite solid: ΔT_surface = 2q √(t / (π k ρ c))
+    # Skin as a semi-infinite solid. A flux step Δq at t_i adds 2Δq·√((t − t_i)/πkρc) to the surface
+    # temperature; any flux history is a sum of steps (superposition), so the skin also cools correctly.
     k, rho_c = 0.37, 1000 * 3600
+
     def t_to_burn(q_kw, dT=27):                      # 33 °C -> 60 °C = instant cell death
         q = q_kw * 1000
         return math.pi * k * rho_c * (dT / (2 * q)) ** 2
@@ -1168,76 +1182,229 @@ def burns(mass=70, burned=("front_torso", "right_arm", "left_arm"), heat_flux_kw
             [(1, "Midday sun"), (2.5, "Pain limit for firefighters"),
              (10, "Near a burning sofa"), (20, "Flashover threshold"),
              (80, "Inside a flashed-over room")]]
+    t_burn = t_to_burn(heat_flux_kw)
 
-    duration = 7.0
+    # --- timeline (real seconds) ------------------------------------------------
+    sofa = (-5.0, 4.6)
+    start = (-3.9, 3.0)
+    t_beat, t_ign_arm, t_ign_torso = 1.6, 2.6, 3.0
+    t_run, run_v, t_stop = 3.2, 2.5, 5.0
+    x_stop = start[0] + 0.2 + run_v * (t_stop - t_run - 0.15)
+    t_drop, t_roll = 5.3, 5.9
+    roll_T = 3.6
+    t_out = t_roll + 2.7                             # the roll smothers the flames
+    t_up = t_roll + roll_T                           # onto hands and knees
+    t_crawl = t_up + 0.6
+    door = (4.6, 5.4)
+    crawl_v = 0.6
+    # when each burned part's clothing catches (the sleeves first, then the shirt front); parts not
+    # in `burned` never catch, so the film shows exactly the areas the numbers count
+    ignite_order = {"left_arm": t_ign_arm, "right_arm": t_ign_arm + 0.15, "front_torso": t_ign_torso,
+                    "back_torso": t_ign_torso + 0.3, "head": t_ign_torso + 0.4,
+                    "right_leg": t_ign_torso + 0.5, "left_leg": t_ign_torso + 0.6, "groin": t_ign_torso + 0.7}
+    ignite = {p: ignite_order[p] for p in burned}
+    burn_at = {p: t + t_burn for p, t in ignite.items()}
 
-    def victim(t):
-        if t < 3.0:                                   # runs (worst idea: fans flames)
-            return (-3 + 1.8 * t, 0, 0, 0, 0, 0)
-        if t < 3.6:                                   # stop + drop
-            k = (t - 3.0) / 0.6
-            return (2.4, 0, BODY_HALF_THICKNESS * k, math.pi / 2 * k, 0, 0)
-        tt = t - 3.6                                  # roll side to side about the long axis
-        dx = 0.6 * math.sin(tt * 2)
-        return (2.4 + dx, 0, BODY_HALF_THICKNESS, math.pi / 2, dx / 0.15, 0)  # no-slip: angle = x / r
+    # --- smoke: a t² fire fills the room from the ceiling ------------------------
+    alpha, t_fire0, ceiling = 0.047, 60.0, 2.5       # "fast" t² growth; the sofa has burned for a minute
 
-    t_out = 4.4                                       # flames smothered by the roll
+    def fire_kw(t):
+        return min(1500.0, alpha * (t + t_fire0) ** 2)
+
+    smoke_z, z, dts = [], ceiling - 0.1, 0.05
+    for i in range(int(40 / dts) + 1):
+        tt = i * dts
+        smoke_z.append((tt, z))
+        m_dot = 0.071 * (0.7 * fire_kw(tt)) ** (1 / 3) * max(z, 0.1) ** (5 / 3)   # plume entrainment, kg/s
+        z = max(0.8, z - m_dot / (0.75 * room_area) * dts)                          # smoke ~0.75 kg/m³
+
+    def smoke(t):
+        return interp_pairs(smoke_z, t)
+
+    # where you roll: back and forth across the floor, rolling without slipping
+    def roll_angle(t):
+        return 1.6 * math.pi * math.sin(math.tau * max(0.0, t - t_roll) / roll_T)
+
+    def roll_height(phi):                            # the torso is an ellipse: 0.13 m deep, 0.27 m wide
+        return math.hypot(0.13 * math.cos(phi), 0.27 * math.sin(phi))
+
+    UP, FWD = (0, 0, 1), (1, 0, 0)
+    to_sofa = norm((sofa[0] - start[0], sofa[1] - start[1], 0))
+    y_roll = start[1] - 0.2
+    roll_end = (x_stop + 0.93, y_roll - 0.2 * roll_angle(t_up))
+    crawl_dir = norm((door[0] - roll_end[0], door[1] - roll_end[1], 0))
+    crawl_len = math.dist(roll_end, door) - 0.8
+    t_door = t_crawl + crawl_len / crawl_v
+    duration = t_door + 2.5
+    slowmo = [[t_ign_arm - 0.1, t_ign_arm + 0.5, 1 / 3], [t_crawl + 1.0, t_door - 0.5, 2.5]]
+    film_time = film_clock(slowmo, 1, duration)
+
+    def flame(t):
+        """Size of the flames on your clothes: catch, grow while you run (more air), die as you roll."""
+        if t < t_ign_arm:
+            return 0.0
+        grow = min(1.0, 0.35 + (t - t_ign_arm) / 1.2)
+        if t < t_stop:
+            return grow * (1.0 + 0.5 * ease((t - t_run) / 0.8))
+        if t < t_roll:
+            return 1.5 - 0.3 * ease((t - t_stop) / (t_roll - t_stop))
+        return max(0.0, 1.2 * (1 - (t - t_roll) / (t_out - t_roll)))
 
     def flux(t):
-        if t < 3.6:
-            return heat_flux_kw
-        return max(0.0, heat_flux_kw * (t_out - t) / (t_out - 3.6))
+        """Heat flux into your skin (kW/m²): radiant from the sofa, then your own burning clothes."""
+        radiant = 4.0 if t < t_run else 1.5
+        return max(radiant, heat_flux_kw * min(1.0, flame(t)) if t >= t_ign_arm else 0.0)
+
+    flux_steps, prev = [], 0.0                       # the flux history as steps, built once (superposition)
+    for i in range(int(60 / 0.05) + 1):
+        q = flux(i * 0.05)
+        if q != prev:
+            flux_steps.append((i * 0.05, (q - prev) * 1000))
+            prev = q
 
     def t_skin(t):
-        q = heat_flux_kw * 1000
-        hot = lambda tt: 33 + 2 * q * math.sqrt(tt / (math.pi * k * rho_c))
-        if t < 3.6:
-            return hot(t)
-        return 37 + (hot(3.6) - 37) * math.exp(-(t - 3.6) / 6)   # cools once the fire is out
+        return 33 + sum(2 * dq * math.sqrt((t - ti) / (math.pi * k * rho_c)) for ti, dq in flux_steps if ti <= t)
 
-    t_burn = t_to_burn(heat_flux_kw)
+    def drop(t):
+        """Kneel then fall forward. Returns hip x, hip z, body lean β from vertical and the hip angle α
+        that folds the legs back so the feet stay on the floor: 0.93·cos(β + α) + 0.035 = hip z."""
+        k_ = (t - t_drop) / (t_roll - t_drop)
+        if k_ < 0.5:                                 # down onto your knees
+            e = ease(k_ / 0.5)
+            hip_x, hip_z, beta = x_stop, 0.93 + (0.55 - 0.93) * e, 0.15 * e
+        else:                                        # then forward, onto your chest
+            e = ease((k_ - 0.5) / 0.5)
+            hip_x, hip_z, beta = x_stop + 0.93 * e, 0.55 + (roll_height(0) - 0.55) * e, 0.15 + (math.pi / 2 - 0.15) * e
+        alpha = max(0.0, math.acos(max(-1.0, min(1.0, (hip_z - 0.035) / 0.93))) - beta)
+        return hip_x, hip_z, beta, alpha
+
+    def you(t):
+        if t < t_beat:                               # standing, staring at the fire
+            return rig_pose((start[0], start[1], 0.93), to_sofa, UP)
+        if t < t_run:                                # steps in and beats at it
+            k_ = ease((t - t_beat) / 0.5)
+            p = lerp(start, (start[0] - 0.3, start[1] + 0.4), k_)
+            return rig_pose((p[0], p[1], 0.93), to_sofa, lerp(UP, to_sofa, 0.12 * k_))
+        if t < t_stop:                               # turns and runs for the door side
+            k_ = ease((t - t_run) / 0.3)
+            x = start[0] + 0.2 + run_v * max(0.0, t - t_run - 0.15)
+            bob = 0.04 * abs(math.sin(math.tau * 1.4 * film_time(t)))
+            return rig_pose((x, lerp((start[1] + 0.4,), (y_roll,), k_)[0], 0.93 + bob), turn(to_sofa, FWD, k_, (0, -1, 0)),
+                            lerp(UP, FWD, 0.15))
+        if t < t_drop:                               # stop
+            return rig_pose((x_stop, y_roll, 0.93), FWD, UP)
+        if t < t_roll:                               # drop: to your knees, then down onto your chest
+            hip_x, hip_z, beta, _ = drop(t)
+            u = (math.sin(beta), 0, math.cos(beta))
+            f = (math.cos(beta), 0, -math.sin(beta))
+            return rig_pose((hip_x, y_roll, hip_z), f, u)
+        if t < t_up:                                 # roll back and forth about your long axis
+            phi = roll_angle(t)
+            f = (0, math.sin(phi), -math.cos(phi))
+            return rig_pose((x_stop + 0.93, y_roll - 0.2 * phi, roll_height(phi)), f, FWD)
+        if t < t_crawl:                              # onto hands and knees, facing the door
+            k_ = ease((t - t_up) / (t_crawl - t_up))
+            return rig_pose((roll_end[0], roll_end[1], roll_height(0) + (0.66 - roll_height(0)) * k_),
+                            (0, 0, -1), turn(FWD, crawl_dir, k_, FWD))
+        d = min(crawl_len, crawl_v * (t - t_crawl))  # crawling under the smoke
+        sway = 0.025 * math.sin(math.tau * 0.9 * film_time(t))
+        return rig_pose((roll_end[0] + crawl_dir[0] * d, roll_end[1] + crawl_dir[1] * d, 0.66 + sway), (0, 0, -1), crawl_dir)
+
+    def joints_you(t):
+        ph = math.tau * film_time(t)
+        if t < t_beat:
+            return {"shoulder_L": (0.1, -0.3, 0), "shoulder_R": (-0.1, -0.3, 0), "hip_L": (0, 0, 0), "hip_R": (0, 0, 0),
+                    "neck": (0, 0.1, 0)}
+        if t < t_run:                                # beating: arms chop down at the flames
+            sw = 0.8 * math.sin(ph * 1.6)
+            return {"shoulder_L": (0.15, -1.6 + sw, 0), "shoulder_R": (-0.15, -1.6 - sw, 0),
+                    "hip_L": (0, -0.1, 0), "hip_R": (0, 0.1, 0), "neck": (0, 0.2, 0)}
+        if t < t_stop:                               # running
+            sw = 0.7 * math.sin(ph * 1.4)
+            return {"shoulder_L": (0.15, -sw, 0), "shoulder_R": (-0.15, sw, 0), "hip_L": (0, sw, 0), "hip_R": (0, -sw, 0),
+                    "neck": (0, 0, 0)}
+        if t < t_drop:
+            return {"shoulder_L": (0.1, 0, 0), "shoulder_R": (-0.1, 0, 0), "hip_L": (0, 0, 0), "hip_R": (0, 0, 0),
+                    "neck": (0, 0, 0)}
+        if t < t_up:                                 # hands over the face, elbows in; legs fold to kneel
+            k_ = ease((t - t_drop) / 0.4)
+            fold = drop(t)[3] if t < t_roll else 0.0
+            return {"shoulder_L": (-0.35 * k_, -2.75 * k_, 0), "shoulder_R": (0.35 * k_, -2.75 * k_, 0),
+                    "hip_L": (0.05, fold, 0), "hip_R": (-0.05, fold, 0), "neck": (0, 0.25 * k_, 0)}
+        # hands and knees: arms straight down (−π/2), thighs angled back so the knees reach the floor
+        k_ = ease((t - t_up) / (t_crawl - t_up))
+        sw = 0.22 * math.sin(ph * 0.9) if t >= t_crawl else 0.0
+        return {"shoulder_L": (0.05, (-2.75 + (2.75 - math.pi / 2) * k_) + sw, 0),
+                "shoulder_R": (-0.05, (-2.75 + (2.75 - math.pi / 2) * k_) - sw, 0),
+                # each leg only lifts as it steps (rigid legs: swinging further down would dig in)
+                "hip_L": (0, -0.75 * k_ + max(0.0, sw), 0), "hip_R": (0, -0.75 * k_ + max(0.0, -sw), 0),
+                "neck": (0, -0.5 * k_, 0)}
+
+    dense = [[t_ign_arm - 0.3, t_ign_arm + 0.6, 1], [t_drop - 0.1, t_crawl + 0.1, 1]]
+    rows_you = unwrap(sample(you, duration, dense=dense), (4, 5, 6))
+    ts = [r[0] for r in rows_you]
+    rows_smoke = sample(lambda t: (0, 0, smoke(t), 0, 0, 0), duration)
+    z_end = smoke(t_door)
+
     story = {
-        "series": {"q": series(flux, duration), "T": series(t_skin, duration)},
-        "hud": [{"sym": "q", "series": "q", "unit": "kW/m²", "fmt": "{:.0f}", "note": "heat flux on the skin"},
+        "slowmo": slowmo,
+        "series": {"q": series(flux, duration, dt=1 / 30), "T": series(t_skin, duration, dt=1 / 10),
+                   "smoke": series(smoke, duration, dt=1 / 10)},
+        "hud": [{"sym": "q", "series": "q", "unit": "kW/m²", "fmt": "{:.0f}", "note": "heat flux into your skin"},
                 {"sym": "T_skin", "series": "T", "unit": "°C", "fmt": "{:.0f}"}],
         "captions": [
-            [0, "Clothes on fire.", f"{heat_flux_kw} kW/m² on the skin  ·  real physics, every frame"],
-            [t_burn, "Skin reaches 60 °C.", f"after {t_burn:.1f} s: cells die on contact"],
-            [2.3, "Running fans the flames.", "more air, more fire"],
-            [3.0, "Stop. Drop.", "get low, cover the face with the hands"],
-            [3.6, "Roll.", "smother the flames against the floor"],
-            [5.0, f"{tbsa}% of the body burned.", f"Parkland: {parkland / 1000:.1f} L of fluid in the first 24 h"],
+            [0, "Your sofa is on fire.", f"{fire_kw(0):.0f} kW and growing  ·  smoke fills the room from the ceiling down"],
+            [t_beat, "You try to beat it out.", "never: get out, shut the door, call 911"],
+            [t_ign_arm, "Your sleeve catches.", f"{heat_flux_kw} kW/m² on your skin"],
+            [t_run, "You run.", "running fans the flames: more air, more fire"],
+            [min(burn_at.values()), "Your skin passes 60 °C.", f"after {t_burn:.1f} s under the flames, cells die"],
+            [t_stop, "Stop.", ""],
+            [t_drop, "Drop.", "hands over your face"],
+            [t_roll, "Roll.", "smother the flames against the floor"],
+            [t_out, "The flames are out.", "cool the burns under running water for 20 minutes"],
+            [t_crawl, "Crawl under the smoke.", f"the hot layer is down to {smoke(t_crawl):.1f} m: the air near the floor is cooler"],
+            [t_door, "Get out. Stay out.", f"{tbsa}% of your skin burned  ·  {parkland / 1000:.1f} L of fluid in 24 h"],
         ],
         "callouts": [
-            [0.6, 3.0, "victim", [0, 0, 1.25], "front torso: 18%"],
-            [1.2, 3.0, "victim", [0, 0.27, 1.1], "each arm: 9%"],
-            [5.0, 7.0, "victim", [0, 0, 1.2], f"{tbsa}% TBSA  ·  burn centre"],
+            [t_ign_arm, t_run, "you", [0, 0, 1.3], "the sleeve catches"],
+            [min(burn_at.values()), t_drop, "you", [0, 0, 1.25],
+             "  ·  ".join(f"{p.replace('_', ' ')} {rule_of_nines[p]}%" for p in burned)],
+            [t_crawl, t_door, None, [door[0] - 1.0, door[1] - 0.6, smoke(t_crawl) + 0.2], "hot smoke layer"],
+            [t_door - 0.5, duration, "you", [0, 0, 1.3], f"{tbsa}% TBSA  ·  burn centre"],
         ],
         "graphs": [
-            {"title": "skin surface temperature (°C)", "lines": [["T", "skin", "accent"]],
+            {"title": "skin surface temperature (°C)", "lines": [["T", "you", "accent"]],
              "refs": [[44, "pain"], [60, "cell death"]]},
-            {"title": "heat flux (kW/m²)", "lines": [["q", "flames", "accent"]]},
+            {"title": "smoke layer (m above the floor)", "lines": [["smoke", "layer", "ink"]],
+             "refs": [[1.6, "standing head"], [0.6, "crawling head"]]},
         ],
-        "eqs": ["ΔT = 2q·√(t / πkρc)   (skin as a semi-infinite solid)",
+        "eqs": ["ΔT = Σ 2Δq·√((t − tᵢ) / πkρc)   (skin as a semi-infinite solid)",
                 f"60 °C after t = πkρc·(ΔT/2q)² = {t_burn:.1f} s",
-                f"Parkland = 4 mL × {mass} kg × {tbsa}% = {parkland / 1000:.1f} L"],
+                f"smoke: ṁ = 0.071·Q^⅓·z^⁵ᐟ³ → layer at {z_end:.1f} m after {t_door:.0f} s"],
     }
+    story["captions"].sort(key=lambda c: c[0])
 
     return {
         "story": story,
         "id": "burns", "title": "Burns in a house fire",
-        "inputs": dict(mass_kg=mass, burned_areas=list(burned), heat_flux_kW_m2=heat_flux_kw),
+        "inputs": dict(mass_kg=mass, burned_areas=list(burned), heat_flux_kW_m2=heat_flux_kw, room_area_m2=room_area),
         "results": [
             ("Total body surface area burned", tbsa, "%", "Rule of nines (adult)"),
             ("Parkland fluid, 24 h", parkland, "mL", "4 mL × kg × %TBSA of Ringer's lactate"),
             ("Of which in first 8 h", parkland / 2, "mL", "Half of it, timed from the burn, not from arrival"),
-            ("Time to full-thickness skin damage", t_to_burn(heat_flux_kw), "s",
-             f"Semi-infinite solid conduction at {heat_flux_kw} kW/m²"),
+            ("Time to full-thickness skin damage", t_burn, "s", f"Semi-infinite solid conduction at {heat_flux_kw} kW/m²"),
+            ("Fire size when you notice it", fire_kw(0), "kW", f"t² growth, α = {alpha} kW/s², burning for {t_fire0:.0f} s"),
+            ("Smoke layer when you reach the door", z_end, "m", "plume entrainment ṁ = 0.071·Q^⅓·z^⁵ᐟ³ filling the room"),
             ("Smoke at head height", 0, "", "CO and cyanide kill more fire victims than flames. Crawl low"),
         ],
         "tables": {"Radiant heat": {"columns": ["kW/m²", "Source", "Seconds to burn"], "rows": rows}},
-        "anim": {"fps": FPS, "duration": duration, "actors": {"victim": sample(victim, duration, dense=story.get("slowmo", []))},
-                 "burned_parts": list(burned)},
+        "anim": {"fps": FPS, "duration": duration,
+                 "actors": {"you": rows_you, "smoke": rows_smoke},
+                 "joints": {"you": joint_rows(joints_you, ts)},
+                 "flame": [[t, round(flame(t), 4)] for t in ts],
+                 "burned_parts": list(burned), "burn_at": burn_at,
+                 "ignite": ignite,
+                 "sofa": list(sofa), "door": list(door)},
     }
 
 
