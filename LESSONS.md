@@ -255,16 +255,20 @@ Every scenario below lands in the same primary survey, done in this order becaus
 
 - `voltage_V` = 120
 - `skin` = wet
-- `contact_time_s` = 1.0
+- `contact_time_s` = 2.2
+- `soil_resistivity_ohm_m` = 100.0
 
 ### Physics and engineering
 
 | Quantity | Value | How |
 |---|---|---|
-| Body resistance (hand to hand) | **1000 Ω** | Skin is most of it. Water lowers it 100× |
-| Current through body | **120 mA** | Ohm's law: I = V/R |
+| Body resistance (hand to feet) | **1000 Ω** | Skin is most of it. Water lowers it 100× |
+| Current through you | **120 mA** | Ohm's law: I = V/R |
 | Effect | ventricular fibrillation (VF) |  |
-| Heat deposited | **14.40 J** | Q = I²Rt (Joule heating, most of it at the entry/exit points) |
+| Heat deposited | **31.68 J** | Q = I²Rt (Joule heating, most of it at the entry and exit points) |
+| Step voltage 1 m from the line | **35.37 V** | V = ρI/2π·(1/r − 1/(r+s)), 0.8 m stride, 5 A into wet soil |
+| Step voltage 10 m from the line | **0.59 V** | why rescuers stay 10 m back until the power is off |
+| Heart output in VF | **0.00 L/min** | fibrillation pumps nothing; CPR gives ~25–30%, a shock restarts it |
 | Heart in the current path? | Hand to hand or hand to foot both cross the chest. That is why it kills |  |
 
 **Voltage × skin**

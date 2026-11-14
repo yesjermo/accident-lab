@@ -439,6 +439,14 @@ function streetBlock(y, n = 7) {
 }
 
 // ---------------------------------------------------------------- scene builders
+// A backup stand-in for a jointed Blender rig: the dummy turned to face the actor's +y, as the rig is.
+// (Joint motion only exists in the Blender export.)
+function rigActor(cap) {
+  const g = new THREE.Group(); g.rotation.order = "ZYX"; world.add(g);
+  const d = dummy(); world.remove(d); d.rotation.z = Math.PI / 2; g.add(d);
+  d.traverse(o => { if (o.isMesh && o.position.z > 1.68) o.material = mat(cap); });
+  return g;
+}
 const note_drowning = "You're 20 m out when a rip current takes you. Watch from the side, through a cut in the sea: you fight it, tire, go under, and a lifeguard brings you back. 12× speed, real time at the moments that matter, 30× for the long tow.";
 const BUILD = {
   pedestrian() {
@@ -466,12 +474,7 @@ const BUILD = {
       const a = new THREE.Mesh(new THREE.ConeGeometry(1.0, 3.4, 3), mat(C.accent));
       a.position.set(0, y, .05); a.userData.noInk = true; world.add(a);
     }
-    for (const [name, cap] of [["you", C.accent], ["lifeguard", C.amber]]) {
-      const g = new THREE.Group(); g.rotation.order = "ZYX"; world.add(g);
-      const d = dummy(); world.remove(d); d.rotation.z = Math.PI / 2; g.add(d);   // the rig faces the actor's +y
-      d.traverse(o => { if (o.isMesh && o.position.z > 1.68) o.material = mat(cap); });
-      actors[name] = g;
-    }
+    actors.you = rigActor(C.accent); actors.lifeguard = rigActor(C.amber);
     followName = "you";
     camera.position.set(16, 1, -30);
     return note_drowning;
@@ -489,23 +492,25 @@ const BUILD = {
     return `A fall from ${h} m onto concrete. The impact speed comes from v = √(2gh); how hard the body stops depends on how far it travels while stopping.`;
   },
   electrocution(s) {
+    const an = s.anim, xs = an.x_stop;
     ground(400, 400, C.paper, -.02);
-    const puddle = new THREE.Mesh(new THREE.CircleGeometry(2.6, 48), mat(C.sea));
-    puddle.scale.set(1.5, 1, 1); puddle.position.set(.2, 0, .004); puddle.receiveShadow = true; puddle.userData.noInk = true; world.add(puddle);
-    cyl(.16, 8, mat(C.clayDark), 2.5, 1.5, 4, world, false);
-    const p0 = new THREE.Vector3(2.5, 1.5, 7.6), p1 = new THREE.Vector3(-.02, .3, .84);
-    const wire = new THREE.Mesh(new THREE.CylinderGeometry(.018, .018, p0.distanceTo(p1), 8), mat(C.ink));
-    wire.position.copy(p0.clone().add(p1).multiplyScalar(.5));
-    wire.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().sub(p0).normalize());
+    const puddle = new THREE.Mesh(new THREE.CircleGeometry(1.5, 48), mat(C.sea));
+    puddle.scale.set(1, .66, 1); puddle.position.set(xs + .1, -.2, .004); puddle.receiveShadow = true; puddle.userData.noInk = true; world.add(puddle);
+    cyl(.14, 9, mat(C.clayDark), 2.6, 1.6, 4.5, world, false);
+    const c = an.contact, e = an.line_end;
+    const pts = [[2.6, .6, 8.6], [1.9, .3, 5.2], [1.0, -.05, 2.4], c, [c[0] - .15, (c[1] + e[1]) / 2, .6], e]
+      .map(p => new THREE.Vector3(...p));
+    const wire = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, .018, 6), mat(C.ink));
     wire.userData.noInk = true; world.add(wire);
-    const arc = new THREE.Mesh(new THREE.IcosahedronGeometry(.13, 0), new THREE.MeshBasicMaterial({ color: 0x3d7fd6 }));
-    arc.position.copy(p1); arc.userData.noInk = true; world.add(arc);
-    const glow = new THREE.PointLight(0x7fb4ff, 0, 6); glow.position.copy(p1); world.add(glow);
-    extras.push({ arc, glow, window: s.anim.shock_window });
-    actors.victim = dummy();
-    followName = "victim";
+    const arc = new THREE.Mesh(new THREE.IcosahedronGeometry(.1, 0), new THREE.MeshBasicMaterial({ color: 0x3d7fd6 }));
+    arc.position.copy(pts[3]); arc.userData.noInk = true; world.add(arc);
+    const glow = new THREE.PointLight(0x7fb4ff, 0, 6); glow.position.copy(pts[3]); world.add(glow);
+    extras.push({ arc, glow, window: an.shock_window });
+    box(12, .3, 3.2, mat(C.clay), an.breaker[0], an.breaker[1] + .45, 1.6);
+    actors.you = rigActor(C.accent); actors.neighbour = rigActor(C.green);
+    followName = "you";
     camera.position.set(4.6, 2.2, 5.6);
-    return "A downed line over wet ground. Above about 15 mA the forearm muscles lock and the hand cannot let go. Never touch someone who is still in contact.";
+    return "A 120 V line sags across the garden path and you reach to push it aside. Crimson marks the current's path, hand to feet across your heart. Your neighbour stays back and cuts the power before touching you.";
   },
   burns(s) {
     ground(400, 400, C.paper, -.02);
