@@ -70,7 +70,7 @@ function mount({ stage, svg, read }, value) {
     pads.forEach((p) => { drawPad(p, now); if (!tdone(p.give, now)) m = true; });
     drawDummy(now);
     for (const t of [pos.x, pos.z, pos.lie]) if (!tdone(t, now)) m = true;
-    if (act >= 0) pads[act].el.g.after(dummy); else g.append(dummy);
+    if (act !== null && act >= 0) pads[act].el.g.after(dummy); else g.append(dummy);   // null >= 0 is true in JS
     return m;
   });
   bag.add(B.unregister);
