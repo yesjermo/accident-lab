@@ -28,29 +28,29 @@
   .num { font-variant-numeric: tabular-nums lining-nums; }
 
   /* ---------------------------------------------------------------- masthead */
-  .mast { padding: 14px var(--gutter) 0; border-bottom: 1px solid var(--ink); }
+  .mast { padding: 16px var(--gutter) 0; border-bottom: 1px solid var(--ink); }
   .mast-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .brand { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
-  .brand i { font-weight: 400; font-size: 15px; color: var(--muted); margin-left: 10px; letter-spacing: 0; }
+  .brand i { font-weight: 400; font-style: normal; font-size: 15px; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
   .sos { font-size: 14px; color: var(--ink-2); }
   .sos b { color: var(--accent); }
   .tabs { display: flex; gap: 28px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
-  .tabs button { background: none; border: 0; padding: 8px 0 10px; cursor: pointer; white-space: nowrap;
+  .tabs button { background: none; border: 0; padding: 8px 0 12px; cursor: pointer; white-space: nowrap;
                  font-size: 16px; color: var(--muted); border-bottom: 2px solid transparent;
                  transition: color .2s var(--ease), border-color .2s var(--ease); }
   .tabs button:hover { color: var(--ink); }
-  .tabs button[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--accent); }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 
   /* ---------------------------------------------------------------- theatre */
-  .theatre { padding: 18px var(--gutter) 0; --h: clamp(420px, calc(100svh - 250px), 860px); }
-  .views { display: grid; grid-template-columns: calc(var(--h) * 9 / 16) minmax(0, 1fr); gap: 18px; height: var(--h); }
+  .theatre { padding: 16px var(--gutter) 0; --h: clamp(420px, calc(100svh - 250px), 860px); }
+  .views { display: grid; grid-template-columns: calc(var(--h) * 9 / 16) minmax(0, 1fr); gap: 16px; height: var(--h); }
   .film, .live { position: relative; margin: 0; background: var(--paper); border: 1px solid var(--ink); overflow: hidden; }
   .film video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--paper); }
-  .film .tag, .live .tag { position: absolute; left: 10px; bottom: 8px; font-size: 12px; font-style: italic; color: var(--muted);
+  .film .tag, .live .tag { position: absolute; left: 12px; bottom: 8px; font-size: 12px; color: var(--muted);
                            pointer-events: none; }
   .film .state { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center;
-                 font-style: italic; color: var(--muted); font-size: 15px; }
+                 color: var(--muted); font-size: 15px; }
   .film .state code { font: 12px ui-monospace, Menlo, monospace; color: var(--ink-2); font-style: normal; display: block; margin-top: 8px; }
   .film[data-state="ready"] .state { display: none; }
   .film[data-state="missing"] video { visibility: hidden; }
@@ -63,38 +63,38 @@
           grid-template-columns: 1fr auto 1fr; align-items: start; pointer-events: none;
           background: linear-gradient(var(--paper) 55%, #f6f5f200); }
   .read .clock { font-size: 15px; }
-  .badge { display: inline-block; margin-top: 4px; padding: 1px 7px; border: 1px solid var(--accent); color: var(--accent);
+  .badge { display: inline-block; margin-top: 4px; padding: 2px 8px; border: 1px solid var(--accent); color: var(--accent);
            font-size: 13px; font-style: italic; opacity: 0; transition: opacity .25s var(--ease); }
   .badge.on { opacity: 1; }
   .hud1 { text-align: center; color: var(--accent); }
   .hud1 .v { font-size: 26px; font-style: italic; line-height: 1.1; }
   .hud1 small { display: block; font-size: 12px; font-style: italic; color: var(--muted); }
   .hud2 { text-align: right; font-size: 17px; font-style: italic; }
-  .caption { position: absolute; left: 0; right: 0; top: 74px; text-align: center; pointer-events: none; padding: 0 16px; }
+  .caption { position: absolute; left: 0; right: 0; top: 72px; text-align: center; pointer-events: none; padding: 0 16px; }
   .caption h2 { margin: 0; font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -.015em; text-wrap: balance; }
   .caption p { margin: 2px 0 0; font-style: italic; font-size: 14px; color: var(--ink-2); text-wrap: balance; }
   .caption.flip h2, .caption.flip p { animation: rise .5s var(--ease); }
   @keyframes rise { from { opacity: .0; transform: translateY(6px); filter: blur(3px); } }
   .callouts { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
   .callouts text { font: italic 14px var(--serif); fill: var(--ink); paint-order: stroke; stroke: var(--paper); stroke-width: 4px; }
-  .camtoggle { position: absolute; left: 10px; bottom: 8px; padding: 5px 12px; border: 1px solid var(--ink); border-radius: 999px;
-               background: var(--paper); font-size: 13px; font-style: italic; cursor: pointer; transition: background .2s, color .2s; }
+  .camtoggle { position: absolute; left: 12px; bottom: 8px; padding: 4px 12px; border: 1px solid var(--ink); border-radius: 999px;
+               background: var(--paper); font-size: 13px; cursor: pointer; transition: background .2s var(--ease), color .2s var(--ease), border-color .2s var(--ease); }
   .camtoggle:hover { border-color: var(--accent); color: var(--accent); }
-  .camtoggle[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-style: normal; }
+  .camtoggle[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
   .camtoggle[hidden] { display: none; }
-  .hint { position: absolute; right: 10px; bottom: 8px; font-size: 12px; font-style: italic; color: var(--muted);
+  .hint { position: absolute; right: 12px; bottom: 8px; font-size: 12px; color: var(--muted);
           transition: opacity .6s var(--ease); pointer-events: none; }
   .hint.gone { opacity: 0; }
 
   /* ---------------------------------------------------------------- timeline */
-  .transport { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px 0 6px; }
+  .transport { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px 0 8px; }
   .play { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
           display: grid; place-items: center; cursor: pointer; transition: transform .2s var(--ease), background .2s; }
   .play:hover { background: var(--accent); border-color: var(--accent); }
   .play:active { transform: scale(.94); }
   .play svg { width: 16px; height: 16px; }
   .tclock { font-size: 15px; min-width: 9.5em; }
-  .tclock i { color: var(--muted); }
+  .tclock i { font-style: normal; color: var(--muted); }
   .track { position: relative; height: 34px; }
   .track .rail { position: absolute; left: 0; right: 0; top: 16px; height: 1px; background: var(--ink); }
   .track .band { position: absolute; top: 9px; height: 15px; background: var(--accent-wash); border-left: 1px solid var(--accent);
@@ -108,51 +108,52 @@
   .track input:focus-visible + .focus { outline: 2px solid var(--accent); outline-offset: 2px; }
   .track .focus { position: absolute; inset: 0; pointer-events: none; }
   .speed { display: flex; border: 1px solid var(--ink); }
-  .speed button { border: 0; background: none; padding: 6px 10px; cursor: pointer; font-size: 14px; }
+  .speed button { border: 0; background: none; padding: 8px 12px; cursor: pointer; font-size: 14px; }
   .speed button + button { border-left: 1px solid var(--ink); }
   .speed button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-  .note { margin: 0; padding-bottom: 6px; font-style: italic; font-size: 15px; color: var(--ink-2); }
+  .note { margin: 0; padding-bottom: 8px; font-size: 15px; color: var(--ink-2); max-width: 76ch; }
   .note b { font-style: normal; }
   .legend-band { display: inline-block; width: 18px; height: 9px; background: var(--accent-wash); border: 1px solid var(--accent); vertical-align: -1px; }
 
   /* ---------------------------------------------------------------- readings */
-  .readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.35fr); gap: 28px;
-              padding: 18px var(--gutter) 26px; border-top: 1px solid var(--ink); margin-top: 12px; }
+  .readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.35fr); gap: 32px;
+              padding: 20px var(--gutter) 24px; border-top: 1px solid var(--ink); margin-top: 12px; }
   .graph h3 { margin: 0 0 4px; font-size: 13px; font-weight: 400; font-style: italic; color: var(--muted); }
   .graph svg { display: block; width: 100%; height: 130px; overflow: visible; }
   .graph svg text { font: italic 11px var(--serif); fill: var(--muted); }
   .eqs { align-self: center; font-style: italic; font-size: 15px; line-height: 1.5; }
-  .eqs p { margin: 0 0 10px; text-wrap: pretty; }
+  .eqs p { margin: 0 0 8px; text-wrap: pretty; }
 
   /* ---------------------------------------------------------------- notes */
-  .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 56px; padding: 34px var(--gutter) 60px;
+  .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 56px; padding: 32px var(--gutter) 64px;
            border-top: 1px solid var(--ink); max-width: 1320px; }
-  .notes h2 { font-size: 26px; letter-spacing: -.015em; margin: 34px 0 10px; line-height: 1.15; }
+  .notes h2 { font-size: 28px; font-weight: 400; letter-spacing: -.015em; margin: 32px 0 12px; line-height: 1.15; }
   .notes h2:first-child { margin-top: 0; }
-  .notes h3 { font-size: 18px; margin: 24px 0 6px; }
+  .notes h3 { font-size: 18px; font-weight: 400; margin: 24px 0 8px; }
   .notes p, .notes li, .notes dd { max-width: 68ch; }
   .notes ul, .notes ol { margin: 0; padding-left: 1.2em; }
-  .notes li { margin: 6px 0; }
+  .notes li { margin: 4px 0 8px; }
   .notes li::marker { color: var(--accent); }
-  .inputs { font-size: 14px; font-style: italic; color: var(--muted); margin: 0 0 12px; }
+  .inputs { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
-  th, td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--rule); }
-  th { font-weight: 400; font-style: italic; color: var(--muted); border-bottom-color: var(--ink); }
-  td.v { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums lining-nums; }
-  td.how { color: var(--ink-2); font-size: 14px; font-style: italic; }
-  tr.verdict td { color: var(--accent); font-weight: 700; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 400; color: var(--muted); border-bottom-color: var(--ink); }
+  td:first-child { color: var(--ink-2); }
+  td.v { white-space: nowrap; color: var(--ink); font-size: 16px; font-variant-numeric: tabular-nums lining-nums; }
+  td.how { color: var(--ink-2); font-size: 14px; }
+  tr.verdict td { color: var(--accent); }
   dl { margin: 0; }
-  dl div { display: grid; grid-template-columns: 2.2em 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); }
-  dl dt { font-weight: 700; color: var(--accent); }
+  dl div { display: grid; grid-template-columns: 2.2em 1fr; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  dl dt { color: var(--accent); }
   dl dd { margin: 0; }
   .ops div { grid-template-columns: 1fr; gap: 2px; padding: 12px 0; }
   .ops dt { color: var(--ink); }
   .ops dd { color: var(--ink-2); }
   .aid { counter-reset: s; list-style: none; padding: 0 !important; }
   .aid li { counter-increment: s; display: grid; grid-template-columns: 2em 1fr; }
-  .aid li::before { content: counter(s); font-weight: 700; color: var(--accent); }
-  .disclaimer { font-size: 14px; font-style: italic; color: var(--ink-2); padding: 10px 14px; background: var(--accent-wash); margin: 0 0 18px; }
-  footer { padding: 20px var(--gutter) 40px; font-size: 13px; font-style: italic; color: var(--muted); border-top: 1px solid var(--rule); }
+  .aid li::before { content: counter(s); color: var(--accent); font-variant-numeric: tabular-nums lining-nums; }
+  .disclaimer { font-size: 14px; color: var(--ink-2); padding: 12px 16px; background: var(--accent-wash); margin: 0 0 20px; }
+  footer { padding: 20px var(--gutter) 40px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); }
 
   /* ---------------------------------------------------------------- phone */
   @media (max-width: 860px) {
@@ -166,10 +167,10 @@
     .views { display: block; position: relative; height: auto; aspect-ratio: 4 / 5; }
     .live { position: absolute; inset: 0; }
     .film { position: absolute; z-index: 3; right: 10px; bottom: 10px; width: 30%; aspect-ratio: 9 / 16;
-            box-shadow: 0 6px 18px #1c1c2233; transition: all .45s var(--ease); }
+            box-shadow: 0 6px 16px #1c1c2233; }
     .film .tag, .film .state { display: none; }
     .views.swapped .film { inset: 0; width: auto; aspect-ratio: auto; box-shadow: none; z-index: 1; }
-    .views.swapped .live { inset: auto 10px 10px auto; width: 36%; aspect-ratio: 3 / 4; z-index: 3; box-shadow: 0 6px 18px #1c1c2233; }
+    .views.swapped .live { inset: auto 10px 10px auto; width: 36%; aspect-ratio: 3 / 4; z-index: 3; box-shadow: 0 6px 16px #1c1c2233; }
     .views.swapped .live .read, .views.swapped .live .caption, .views.swapped .live .hint, .views.swapped .camtoggle, .views.swapped .callouts { display: none; }
     .swap { display: grid; place-items: center; position: absolute; z-index: 4; width: 44px; height: 44px; right: 10px; bottom: 10px;
             background: var(--paper); border: 1px solid var(--ink); border-radius: 50%; cursor: pointer;
@@ -720,19 +721,31 @@ function buildGraph(el, spec) {
 
 // ---------------------------------------------------------------- notes (the reading column)
 const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-const fmt = v => typeof v === "number" ? (Math.abs(v) >= 100 ? Math.round(v).toLocaleString("en") : v.toFixed(2)) : v;
+// One number format: 3 significant figures, thousands separators, no trailing zeros.
+const fmt = v => typeof v === "number"
+  ? (Math.abs(v) >= 100 ? Math.round(v).toLocaleString("en") : v.toLocaleString("en", { maximumSignificantDigits: 3 })) : v;
+const withUnit = (v, u) => u ? `${fmt(v)}${u === "%" ? "" : "\u2009"}${esc(u)}` : fmt(v);
+// physics inputs are code names like car_mass_kg: show them as "car mass 1,500 kg"
+const UNITS = [["_kW_m2", "kW/m²"], ["_ohm_m", "Ω·m"], ["_cm2", "cm²"], ["_m2", "m²"], ["_kmh", "km/h"], ["_ms", "m/s"],
+               ["_kg", "kg"], ["_c", "°C"], ["_V", "V"], ["_L", "L"], ["_N", "N"], ["_s", "s"], ["_m", "m"]];
+function inputLabel(key, val) {
+  const [suf, unit] = UNITS.find(([s]) => key.endsWith(s)) || ["", ""];
+  const name = key.slice(0, key.length - suf.length).replace(/_/g, " ");
+  const v = Array.isArray(val) ? val.map(x => fmt(x)).join(", ") : typeof val === "number" ? fmt(val) : String(val).replace(/_/g, " ");
+  return `${esc(name)} ${esc(v)}${unit ? (unit === "%" ? "" : "\u2009") + esc(unit) : ""}`;
+}
 function renderNotes(s) {
   const m = s.medical, li = a => a.map(x => `<li>${esc(x)}</li>`).join("");
   const res = s.results.map(([l, v, u, how]) => (v === 0 && u === "")
     ? `<tr class="verdict"><td colspan="3">${esc(l)}: ${esc(how)}</td></tr>`
-    : `<tr><td>${esc(l)}</td><td class="v">${fmt(v)} ${esc(u)}</td><td class="how">${esc(how)}</td></tr>`).join("");
+    : `<tr><td>${esc(l)}</td><td class="v">${withUnit(v, u)}</td><td class="how">${esc(how)}</td></tr>`).join("");
   const tables = Object.entries(s.tables).map(([n, t]) =>
     `<h3>${esc(n)}</h3><table><tr>${t.columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr>` +
     t.rows.map(r => `<tr>${r.map(c => `<td class="num">${esc(c)}</td>`).join("")}</tr>`).join("") + "</table>").join("");
   $("notes").innerHTML = `
     <div class="col">
       <h2>The physics</h2>
-      <p class="inputs">Assumptions: ${Object.entries(s.inputs).map(([k, v]) => `${esc(k)} = ${esc(v)}`).join(" · ")}</p>
+      <p class="inputs">Assumptions: ${Object.entries(s.inputs).map(([k, v]) => inputLabel(k, v)).join(" · ")}</p>
       <table><tr><th>Quantity</th><th>Value</th><th>How</th></tr>${res}</table>
       ${tables}
     </div>
