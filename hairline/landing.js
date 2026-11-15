@@ -22,7 +22,7 @@ const TH = 62;                                                     // tower heig
 
 function mount({ stage, svg, read }, value) {
   const bag = disposer();
-  let h = value, act = -1;
+  let h = value, act = null;                       // null: nothing chosen yet, so the first choice always draws
   const C = Cam(45, 0.5, 1.5);
   fit(C, [[-8, -30, 0], [114, PY1 + 4, 0], [114, -30, 0], [-8, PY1 + 4, 0], [-8, -30, TH]], 200, 168);
   const P = proj(C), front = facing(C);
@@ -93,7 +93,6 @@ function mount({ stage, svg, read }, value) {
     else read.textContent = `${pads[a].name} · ${Math.round(h / pads[a].d)} g`;     // a/g = v²/2gd = h/d
     B.wake();
   }
-  choose(-2);
   choose(-1);
 
   // hit: each pad's RESTING top (rule 01): the pointer is put on that pad's own top plane, and the pad
@@ -110,7 +109,7 @@ function mount({ stage, svg, read }, value) {
   }
   bag.add(pointer(stage, { move: (p) => choose(hit(p)), leave: () => choose(-1) }));
   bag.add(() => svg.replaceChildren());
-  return { set: (v) => { h = v; const a = act; act = -2; choose(a); }, destroy: bag.dispose };
+  return { set: (v) => { h = v; const a = act; act = null; choose(a); }, destroy: bag.dispose };
 }
 
 hairline({
