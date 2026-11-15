@@ -9,3 +9,5 @@ __pycache__/
 .DS_Store
 .claude/
 .impeccable/
+hairline/*.png
+hairline/hairline-*.html

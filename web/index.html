@@ -135,6 +135,8 @@
   .notes li { margin: 4px 0 8px; }
   .notes li::marker { color: var(--accent); }
   .inputs { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+  .try { margin: 0 0 24px; border: 1px solid var(--ink); background: #fff; }
+  .try iframe { display: block; width: 100%; height: 600px; border: 0; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; }
   th, td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); }
   th { font-weight: 400; color: var(--muted); border-bottom-color: var(--ink); }
@@ -251,7 +253,7 @@
 
 <section class="notes" id="notes"></section>
 </main>
-<footer>A learning project. Every number is computed in <i>lab/physics.py</i>, and the film and the live scene share its keyframes. The surgical notes describe what trained hospital teams do; they are not instructions.</footer>
+<footer>A learning project. Every number is computed in <i>lab/physics.py</i>, and the film and the live scene share its keyframes. The surgical notes describe what trained hospital teams do; they are not instructions. Interactive figures built with <a href="https://github.com/lucasmarkes/hairline">Hairline</a>.</footer>
 
 <script src="data.js"></script>
 <script type="importmap">
@@ -734,6 +736,19 @@ function inputLabel(key, val) {
   const v = Array.isArray(val) ? val.map(x => fmt(x)).join(", ") : typeof val === "number" ? fmt(val) : String(val).replace(/_/g, " ");
   return `${esc(name)} ${esc(v)}${unit ? (unit === "%" ? "" : "\u2009") + esc(unit) : ""}`;
 }
+// One interactive Hairline figure per scenario: the scenario's key variable under your pointer.
+const FIGURES = {
+  pedestrian: ["stopping", "Speed against stopping distance"], drowning: ["escape", "Which way to swim out of a rip"],
+  fall: ["landing", "What you land on"], electrocution: ["stepfield", "Step voltage around a downed line"],
+  burns: ["smoke", "The smoke layer coming down"], choking: ["thrust", "Abdominal thrusts against a blockage"],
+};
+// The figure's page is same-origin: once it has laid out, size the frame to it so nothing scrolls inside.
+function fitFigure(frame) {
+  try {
+    const d = frame.contentDocument, els = [...d.body.querySelectorAll("*")];
+    frame.style.height = Math.ceil(Math.max(...els.map((e) => e.getBoundingClientRect().bottom))) + "px";
+  } catch {}
+}
 function renderNotes(s) {
   const m = s.medical, li = a => a.map(x => `<li>${esc(x)}</li>`).join("");
   const res = s.results.map(([l, v, u, how]) => (v === 0 && u === "")
@@ -745,6 +760,7 @@ function renderNotes(s) {
   $("notes").innerHTML = `
     <div class="col">
       <h2>The physics</h2>
+      ${FIGURES[s.id] ? `<figure class="try"><iframe src="hairline/${FIGURES[s.id][0]}.html?theme=light" title="${esc(FIGURES[s.id][1])}" loading="lazy"></iframe></figure>` : ""}
       <p class="inputs">Assumptions: ${Object.entries(s.inputs).map(([k, v]) => inputLabel(k, v)).join(" · ")}</p>
       <table><tr><th>Quantity</th><th>Value</th><th>How</th></tr>${res}</table>
       ${tables}
@@ -761,6 +777,11 @@ function renderNotes(s) {
       <h2>The surgeon's view</h2>
       <dl class="ops">${m.surgery.map(([n, d]) => `<div><dt>${esc(n)}</dt><dd>${esc(d)}</dd></div>`).join("")}</dl>
     </div>`;
+  const frame = $("notes").querySelector(".try iframe");
+  if (frame) {
+    frame.addEventListener("load", () => setTimeout(() => fitFigure(frame), 300));
+    if (frame.contentDocument && frame.contentDocument.readyState === "complete") fitFigure(frame);
+  }
 }
 
 // ---------------------------------------------------------------- timeline marks
@@ -875,6 +896,7 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(live);
+addEventListener("resize", () => { const f = $("notes").querySelector(".try iframe"); if (f) fitFigure(f); });
 
 let last = performance.now();
 function loop(now) {

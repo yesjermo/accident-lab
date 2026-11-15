@@ -57,6 +57,21 @@ After changing the physics, re-export both: `--render` for the films and `--glb`
 
 Each run also saves `out/<scenario>.blend`. The HUD text is updated by a frame handler the script registers, so when you open a saved `.blend` on its own, the 3D animation plays but the HUD stays frozen. Open scenes through the script to get the live HUD.
 
+### Interactive figures
+
+Each scenario's physics section opens with a small interactive line figure, built with [Hairline](https://github.com/lucasmarkes/hairline) (MIT, by Lucas Markes). Your pointer drives the scenario's one key variable, using the same equations as `lab/physics.py`:
+
+| Scenario | Figure | Your pointer sets | Slider |
+|---|---|---|---|
+| Pedestrian | `stopping` | the car's speed: it stops after reaction plus braking distance | reaction time |
+| Drowning | `escape` | the way you swim off in a rip | rip speed |
+| Fall | `landing` | what you land on: concrete, grass, a car roof, foam | height |
+| Electrocution | `stepfield` | where you stand near a downed line: the voltage between your feet | current into the ground |
+| House fire | `smoke` | how long the fire has burned: the smoke layer comes down | fire growth |
+| Choking | `thrust` | how hard the thrust squeezes the blocked lungs (Boyle's law) | the food's grip |
+
+Sources are in `hairline/<name>.js`; the built pages the site embeds are in `web/hairline/`. To change one, edit its source and rebuild with the Hairline skill's `build.mjs` (and `look.mjs` to check it), then copy `hairline/hairline-<name>.html` to `web/hairline/<name>.html`.
+
 ## Experiment
 
 Every scenario is a function with its assumptions as arguments in [lab/physics.py](lab/physics.py). Change them and re-run `build.py`:
@@ -79,4 +94,5 @@ Edit `ALL` at the bottom of `physics.py` (e.g. `lambda: physics.pedestrian(speed
 - `blender/render_scenario.py`: builds each scene in Blender from the keyframes
 - `web/index.html`: the viewer: film and live 3D in sync, graphs, physics tables and medical notes
 - `web/media/`: rendered films, copied there by `render_scenario.py --render`
+- `hairline/`, `web/hairline/`: the interactive figures' sources and built pages
 - `LESSONS.md`: generated: the full write-up, readable on its own
