@@ -725,7 +725,7 @@ function buildGraph(el, spec) {
 const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 // One number format: 3 significant figures, thousands separators, no trailing zeros.
 const fmt = v => typeof v === "number"
-  ? (Math.abs(v) >= 100 ? Math.round(v) : Number(v.toPrecision(3))).toLocaleString("en", { maximumFractionDigits: 3 }) : v;
+  ? (Math.abs(v) >= 100 ? Math.round(v).toLocaleString("en") : v.toLocaleString("en", { maximumSignificantDigits: 3 })) : v;
 const withUnit = (v, u) => u ? `${fmt(v)}${u === "%" ? "" : "\u2009"}${esc(u)}` : fmt(v);
 // physics inputs are code names like car_mass_kg: show them as "car mass 1,500 kg"
 const UNITS = [["_kW_m2", "kW/m²"], ["_ohm_m", "Ω·m"], ["_cm2", "cm²"], ["_m2", "m²"], ["_kmh", "km/h"], ["_ms", "m/s"],
