@@ -104,6 +104,15 @@ export const SOURCES: Source[] = [
     kind: 'review',
   },
   {
+    id: 'bodyparts3d',
+    title: 'BodyParts3D 4.0 (part-of tree, 99% reduced OBJ)',
+    authors: 'The Database Center for Life Science (DBCLS)',
+    publisher: 'DBCLS, Japan',
+    url: 'https://dbarchive.biosciencedbc.jp/en/bodyparts3d/',
+    license: 'CC BY 4.0 per the current licence page; the 2011 files carry a CC BY-SA 2.1 JP notice, so the derived 3D model is shared under CC BY-SA',
+    kind: 'reference',
+  },
+  {
     id: 'khan-bohr-haldane',
     title: 'Bohr effect vs. Haldane effect',
     authors: 'Khan Academy Medicine',

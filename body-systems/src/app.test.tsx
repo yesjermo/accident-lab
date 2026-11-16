@@ -273,3 +273,20 @@ describe('regressions from code review', () => {
     expect(await screen.findByText('from the other tab')).toBeInTheDocument();
   });
 });
+
+describe('3D body view', () => {
+  it('falls back to the organ list without WebGL, and the list opens organs and planned parts', async () => {
+    const user = userEvent.setup();
+    go('#/explore/3d');
+    render(<App studyRepo={new MemoryStudyRepository()} />);
+    expect(await screen.findByText('3D needs WebGL')).toBeInTheDocument();
+    const chip = () => screen.getAllByRole('button', { name: 'Heart' }).find((el) => el.classList.contains('chip'))!;
+    await user.click(chip());
+    expect(await screen.findByRole('heading', { level: 2, name: 'Heart' })).toBeInTheDocument();
+    expect(chip()).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Liver' }));
+    expect(await screen.findByRole('heading', { name: 'Liver' })).toBeInTheDocument();
+    expect(screen.getByText(/Lessons for this part aren't written yet/)).toBeInTheDocument();
+    expect(screen.getByText(/BodyParts3D/)).toBeInTheDocument();
+  });
+});

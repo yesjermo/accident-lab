@@ -457,3 +457,14 @@ textarea, input[type='url'], input:not([type]), input[type='text'] { width: 100%
 .banner-recovery { border-bottom-color: var(--bad); background: var(--bad-wash); }
 .banner-recovery p { margin: 0 0 4px; }
 .skip-link { border: 0; font: 600 15px var(--sans); cursor: pointer; }
+
+/* ------------------------------------------------------------ 3D body */
+:root { --skin-3d: #c9a88e; --bone-3d: #e7e0cf; --vessel-rich-3d: #c0393f; --vessel-poor-3d: #3d6db3; --muscle-3d: #a8433f; --organ-3d: #ead2bd; --context-3d: #b6ad9f; }
+.stage3d .toggles { margin-top: 10px; }
+.body3d { position: relative; margin: 10px 0; border: 1px solid var(--rule); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 40%, var(--surface), var(--paper-2)); overflow: hidden; }
+.body3d-canvas { width: 100%; height: min(68vh, 640px); touch-action: none; }
+.body3d-canvas canvas { display: block; }
+.body3d-overlay { position: absolute; inset: 0; display: grid; place-items: center; }
+.body3d-hover { position: absolute; left: 12px; bottom: 8px; margin: 0; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--rule); font: 600 13px var(--sans); }
+.chip-planned { border-style: dashed; color: var(--muted); }
+.attribution { margin-top: 12px; }

@@ -10,6 +10,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // The 3D viewer chunk (three.js) is lazy-loaded only on the 3D page.
+    chunkSizeWarningLimit: 650,
     rollupOptions: {
       output: {
         manualChunks: { react: ['react', 'react-dom', 'react-router-dom'], katex: ['katex'] },

@@ -133,6 +133,7 @@ export function Layout() {
         <nav id="sidenav" className={`sidenav${navOpen ? ' is-open' : ''}`} aria-label="Main">
           <p className="nav-head">Learn</p>
           <ul>
+            {link('/explore/3d', '3D body')}
             {link('/explore/body', 'Explore the body')}
             {link('/journey', 'Follow an Oxygen Molecule')}
           </ul>
@@ -177,7 +178,6 @@ export function Layout() {
           </ul>
           <p className="nav-head">Coming later</p>
           <ul className="planned">
-            <li><span className="nav-disabled" aria-disabled="true">3D anatomy <span className="tag tag-planned">Planned</span></span></li>
             <li><span className="nav-disabled" aria-disabled="true">Shared study collections <span className="tag tag-planned">Planned</span></span></li>
             <li><span className="nav-disabled" aria-disabled="true">Accounts and sync <span className="tag tag-planned">Planned</span></span></li>
           </ul>

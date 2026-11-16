@@ -62,9 +62,15 @@ export function SourcesPage() {
       <section>
         <h2>Diagrams</h2>
         <p>
-          All diagrams are original schematic drawings made for this app and released under the project's licence. They are
-          simplified and not to scale. No third-party artwork or 3D models are used. 3D is deferred until accurate, licensed
-          anatomical assets are available.
+          The 2D diagrams are original schematic drawings made for this app and released under the project's licence. They are
+          simplified and not to scale.
+        </p>
+        <p>
+          The 3D body uses real anatomical meshes from <strong>BodyParts3D</strong> (© The Database Center for Life Science), merged
+          per organ and polygon-reduced with Blender; shapes are not edited. The licence page states CC BY 4.0, while the 2011 files carry
+          a CC BY-SA 2.1 JP notice, so the derived model file is shared under CC BY-SA. The dataset has no lung-surface or individual
+          thigh-muscle meshes, so the lungs appear as their bronchial and vascular trees and thigh muscle is shown only in the 2D tissue
+          diagram. Nothing was sculpted or generated to fill these gaps.
         </p>
       </section>
 
@@ -128,7 +134,7 @@ export function AboutPage() {
       <h2>What is in this release</h2>
       <ul>
         <li>Cardiovascular and respiratory systems, connected by the guided journey "Follow an Oxygen Molecule".</li>
-        <li>Four schematic diagrams with selectable structures and five-lens explanations.</li>
+        <li>A transparent 3D body built from BodyParts3D anatomical meshes, plus four schematic diagrams, all with selectable structures and five-lens explanations.</li>
         <li>Five core mechanisms with layered "Why does this happen?" explanations and a concept map.</li>
         <li>One experiment: the oxygen–hemoglobin dissociation curve (Severinghaus 1979).</li>
         <li>Quiz, labeling, flashcards with a documented spaced-review schedule, notes, bookmarks and attached links.</li>
@@ -144,7 +150,7 @@ export function AboutPage() {
         <li>More systems (renal, nervous) and more experiments.</li>
         <li>Accounts, sync and a FastAPI + PostgreSQL backend. The data model already has owner, collection and visibility fields for this.</li>
         <li>Shared study collections and group annotations.</li>
-        <li>3D anatomy, once accurate, licensed models exist and add something a diagram can't.</li>
+        <li>3D lessons for the other organs shown in the 3D body (currently marked Planned).</li>
         <li>Document ingestion and AI tutoring are deliberately deferred.</li>
       </ul>
       <p className="muted small">
