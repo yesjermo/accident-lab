@@ -458,6 +458,10 @@ export const GLOSSARY: GlossaryTerm[] = [
   { id: 'atp', term: 'ATP', definition: 'Adenosine triphosphate, the cell\'s immediate energy currency.', conceptId: 'cellular-respiration' },
   { id: 'electron-transport-chain', term: 'Electron transport chain', definition: 'Protein complexes in the inner mitochondrial membrane that pass electrons to O₂ and pump H⁺.', conceptId: 'cellular-respiration' },
   { id: 'chemiosmosis', term: 'Chemiosmosis', definition: 'Using the H⁺ gradient across a membrane to drive ATP synthase.', conceptId: 'cellular-respiration' },
+  { id: 'central-chemoreceptor', term: 'Central chemoreceptor', definition: 'Sensor in the brain and brainstem that responds to rising CO₂ and H⁺ and stimulates breathing.', conceptId: 'co2-acid-base' },
+  { id: 'erythropoietin', term: 'Erythropoietin (EPO)', definition: 'Hormone released mainly by the kidneys when tissue oxygen is low; it stimulates red blood cell production in red bone marrow.', conceptId: 'hemoglobin-binding' },
+  { id: 'hematopoiesis', term: 'Hematopoiesis', definition: 'Production of blood cells, including red blood cells, in red bone marrow.' },
+  { id: 'hepatic-portal-system', term: 'Hepatic portal system', definition: 'Veins that carry blood from the digestive organs to the liver before it returns to the heart.', conceptId: 'cellular-respiration' },
   { id: 'pulmonary-circuit', term: 'Pulmonary circuit', definition: 'Right ventricle → lungs → left atrium.', conceptId: 'circulation' },
   { id: 'systemic-circuit', term: 'Systemic circuit', definition: 'Left ventricle → body → right atrium.', conceptId: 'circulation' },
 ];

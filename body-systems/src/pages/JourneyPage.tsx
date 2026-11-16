@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useContent } from '../data/content';
 import { nowIso, useStudy } from '../data/study';
@@ -9,27 +9,42 @@ import { QuestionCard } from '../components/QuestionCard';
 import { ProvenanceNote } from '../components/Provenance';
 import { BookmarkButton, NoteEditor } from '../components/StudyTools';
 import { lessonProgress, OBJECTIVE_STATUS_LABEL } from '../study/progress';
-import { EmptyState } from '../components/States';
+import { EmptyState, LoadingState } from '../components/States';
+import { meshesFor, partByMesh } from '../content/body3d';
+import type { Lesson } from '../domain/types';
+
+const Body3DStage = lazy(() => import('./Body3DStage'));
+
+/** The lesson named in the URL (/lesson/:lessonId/…); /journey/… is the oxygen journey. */
+function useLesson(): { lesson: Lesson | undefined; base: string } {
+  const { lessonId = 'oxygen-journey' } = useParams();
+  const { ix } = useContent();
+  return { lesson: ix.lessons.get(lessonId), base: lessonId === 'oxygen-journey' ? '/journey' : `/lesson/${lessonId}` };
+}
 
 export function JourneyPage() {
   const { stepId } = useParams();
-  const { bundle } = useContent();
-  const lesson = bundle.lessons[0];
-  if (!stepId) return <JourneyOverview />;
+  const { lesson, base } = useLesson();
+  if (!lesson)
+    return (
+      <EmptyState title="That lesson doesn't exist.">
+        <Link to="/journey">Go to the oxygen journey</Link>
+      </EmptyState>
+    );
+  if (!stepId) return <JourneyOverview lesson={lesson} base={base} />;
   const index = lesson.steps.findIndex((s) => s.id === stepId);
   if (index < 0)
     return (
       <EmptyState title="That step doesn't exist.">
-        <Link to="/journey">Back to the journey overview</Link>
+        <Link to={base}>Back to the lesson overview</Link>
       </EmptyState>
     );
-  return <JourneyStep index={index} />;
+  return <JourneyStep lesson={lesson} base={base} index={index} />;
 }
 
-function JourneyOverview() {
-  const { bundle, ix } = useContent();
+function JourneyOverview({ lesson, base }: { lesson: Lesson; base: string }) {
+  const { ix } = useContent();
   const { data } = useStudy();
-  const lesson = bundle.lessons[0];
   const p = lessonProgress(lesson, data);
   const resume = data.lessons[lesson.id]?.lastStepId ?? lesson.steps[0].id;
   return (
@@ -38,7 +53,7 @@ function JourneyOverview() {
       <h1>{lesson.title}</h1>
       <p className="lede">{lesson.summary}</p>
       <div className="row wrap">
-        <Link className="btn btn-primary" to={`/journey/${resume}`}>
+        <Link className="btn btn-primary" to={`${base}/${resume}`}>
           {p.stepsCompleted === 0 ? 'Start the journey' : p.lessonCompleted ? 'Revisit the journey' : 'Continue where you left off'}
         </Link>
         <span className="muted">
@@ -90,7 +105,7 @@ function JourneyOverview() {
         <ol className="route">
           {lesson.steps.map((s, i) => (
             <li key={s.id}>
-              <Link to={`/journey/${s.id}`}>
+              <Link to={`${base}/${s.id}`}>
                 {i + 1}. {s.title}
               </Link>{' '}
               {data.lessons[lesson.id]?.completedStepIds.includes(s.id) && <span className="tag tag-done">✓ done</span>}
@@ -104,12 +119,11 @@ function JourneyOverview() {
   );
 }
 
-function JourneyStep({ index }: { index: number }) {
-  const { bundle, ix } = useContent();
+function JourneyStep({ lesson, base, index }: { lesson: Lesson; base: string; index: number }) {
+  const { ix } = useContent();
   const { data, dispatch } = useStudy();
   const nav = useNavigate();
   const loc = useLocation();
-  const lesson = bundle.lessons[0];
   const step = lesson.steps[index];
   const level = data.settings.level;
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -124,7 +138,7 @@ function JourneyStep({ index }: { index: number }) {
 
   const complete = () => {
     dispatch({ type: 'completeStep', lessonId: lesson.id, stepId: step.id, allStepIds: lesson.steps.map((s) => s.id), now: nowIso() });
-    nav(isLast ? '/journey/complete' : `/journey/${lesson.steps[index + 1].id}`);
+    nav(isLast ? `${base}/complete` : `${base}/${lesson.steps[index + 1].id}`);
   };
 
   const openStructure = (sid: string) => {
@@ -139,7 +153,7 @@ function JourneyStep({ index }: { index: number }) {
         <ol>
           {lesson.steps.map((s, i) => (
             <li key={s.id} className={i === index ? 'is-current' : ''}>
-              <Link to={`/journey/${s.id}`} aria-current={i === index ? 'step' : undefined}>
+              <Link to={`${base}/${s.id}`} aria-current={i === index ? 'step' : undefined}>
                 <span className="step-num">{done.includes(s.id) ? '✓' : i + 1}</span>
                 <span className="step-title">{s.title}</span>
                 {done.includes(s.id) && <span className="visually-hidden"> (completed)</span>}
@@ -152,10 +166,27 @@ function JourneyStep({ index }: { index: number }) {
       <div className="workspace">
         <section className="stage" aria-label="Diagram for this step">
           <p className="where">
-            <span className="eyebrow">Where is the molecule now?</span>
+            <span className="eyebrow">{lesson.id === 'oxygen-journey' ? 'Where is the molecule now?' : 'Where are we?'}</span>
             <strong>{step.whereNow}</strong>
           </p>
-          <Diagram diagram={step.view.diagram} highlight={step.view.highlight} onSelect={openStructure} caption={step.view.caption} />
+          {step.view.diagram === '3d' ? (
+            <Suspense fallback={<LoadingState label="Loading the 3D body" />}>
+              <p className="diagram-caption">{step.view.caption}</p>
+              <Body3DStage
+                key={step.id}
+                selectedMesh={null}
+                highlight={meshesFor(step.view.highlight)}
+                onSelect={(mesh) => {
+                  const part = partByMesh(mesh);
+                  if (part) openStructure(part.structureId);
+                }}
+                showList={false}
+                height="min(58vh, 560px)"
+              />
+            </Suspense>
+          ) : (
+            <Diagram diagram={step.view.diagram} highlight={step.view.highlight} onSelect={openStructure} caption={step.view.caption} />
+          )}
           <p className="muted small">Select any structure to open its full explanation. You can come straight back to this step.</p>
         </section>
 
@@ -235,7 +266,7 @@ function JourneyStep({ index }: { index: number }) {
 
           <div className="row step-nav">
             {index > 0 && (
-              <Link className="btn btn-quiet" to={`/journey/${lesson.steps[index - 1].id}`}>
+              <Link className="btn btn-quiet" to={`${base}/${lesson.steps[index - 1].id}`}>
                 ← Previous
               </Link>
             )}
@@ -250,17 +281,19 @@ function JourneyStep({ index }: { index: number }) {
 }
 
 export function JourneyComplete() {
-  const { bundle } = useContent();
   const { data } = useStudy();
-  const lesson = bundle.lessons[0];
+  const { lesson, base } = useLesson();
+  if (!lesson) return <EmptyState title="That lesson doesn't exist." />;
   const p = lessonProgress(lesson, data);
   return (
     <article className="page narrow">
       <p className="eyebrow">{lesson.title}</p>
-      <h1>{p.lessonCompleted ? 'Journey completed' : 'Almost there'}</h1>
+      <h1>{p.lessonCompleted ? 'Lesson completed' : 'Almost there'}</h1>
       <p className="lede">
         {p.lessonCompleted
-          ? 'You have followed the molecule from the air to the mitochondrion and back out as CO₂.'
+          ? lesson.id === 'oxygen-journey'
+            ? 'You have followed the molecule from the air to the mitochondrion and back out as CO₂.'
+            : `You have completed every step of ${lesson.title}.`
           : `You have completed ${p.stepsCompleted} of ${p.stepsTotal} steps.`}
       </p>
       <p>
@@ -277,7 +310,7 @@ export function JourneyComplete() {
         <Link className="btn" to="/practice/label">
           Try a labeling exercise
         </Link>
-        <Link className="btn btn-quiet" to="/journey">
+        <Link className="btn btn-quiet" to={base}>
           Lesson overview
         </Link>
       </div>

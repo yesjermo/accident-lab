@@ -73,6 +73,8 @@ export interface Provenance {
 // ------------------------------------------------------------------ anatomy
 
 export type DiagramId = 'body' | 'lung' | 'heart' | 'tissue';
+/** A 2D diagram, or the 3D body model. */
+export type ViewId = DiagramId | '3d';
 
 export interface BodySystem {
   id: ID;
@@ -94,8 +96,8 @@ export interface Structure {
   id: ID;
   name: string;
   systemIds: ID[];
-  /** Diagram on which this structure is drawn and selectable. */
-  diagram: DiagramId;
+  /** Diagram on which this structure is drawn and selectable ('3d' = only in the 3D body). */
+  diagram: ViewId;
   /** Other diagrams that also draw it. */
   overviewOn?: DiagramId[];
   /** A closer diagram to zoom into from this structure (e.g. heart → heart diagram). */
@@ -173,7 +175,7 @@ export interface LearningObjective {
 }
 
 export interface DiagramView {
-  diagram: DiagramId;
+  diagram: ViewId;
   highlight: ID[];
   /** Short caption shown under the diagram for this step. */
   caption: string;

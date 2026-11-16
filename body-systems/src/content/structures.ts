@@ -29,8 +29,7 @@ export const SYSTEMS: BodySystem[] = [
     status: 'available',
     structureIds: ['skeletal-muscle', 'cell-membrane', 'mitochondrion'],
   },
-  { id: 'renal', name: 'Renal system', summary: 'Planned: kidneys and long-term acid–base control.', status: 'planned', structureIds: [] },
-  { id: 'nervous', name: 'Nervous system', summary: 'Planned: control of breathing.', status: 'planned', structureIds: [] },
+  { id: 'endocrine', name: 'Endocrine system', summary: 'Planned: hormones beyond EPO and insulin.', status: 'planned', structureIds: [] },
 ];
 
 const none = { body: L([]) };

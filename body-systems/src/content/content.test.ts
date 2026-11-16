@@ -1,6 +1,6 @@
 import { StaticContentRepository, indexBundle, type ContentBundle } from './repository';
 import type { Provenance } from '../domain/types';
-import { DIAGRAM_REGIONS } from '../diagrams/regions';
+import { DIAGRAM_REGIONS, viewShows } from '../diagrams/regions';
 
 let b: ContentBundle;
 beforeAll(async () => {
@@ -93,11 +93,13 @@ describe('content integrity', () => {
 
   it('every structure appears on its diagram, and every lesson highlight is drawable', () => {
     for (const st of b.structures) {
-      expect(DIAGRAM_REGIONS[st.diagram].includes(st.id), `${st.id} on ${st.diagram}`).toBe(true);
+      expect(viewShows(st.diagram, st.id), `${st.id} on ${st.diagram}`).toBe(true);
     }
-    for (const step of b.lessons[0].steps) {
-      for (const id of step.view.highlight) {
-        expect(DIAGRAM_REGIONS[step.view.diagram].includes(id), `${step.id}: ${id} on ${step.view.diagram}`).toBe(true);
+    for (const lesson of b.lessons) {
+      for (const step of lesson.steps) {
+        for (const id of step.view.highlight) {
+          expect(viewShows(step.view.diagram, id), `${step.id}: ${id} on ${step.view.diagram}`).toBe(true);
+        }
       }
     }
     for (const ex of b.labeling) {

@@ -4,6 +4,7 @@ import { useContent } from '../data/content';
 import { useStudy } from '../data/study';
 import { dueCardIds, missedQuestionIds } from '../study/progress';
 import type { Level } from '../domain/types';
+import { MedToolbar } from './MedToolbar';
 
 export function LevelToggle() {
   const { data, dispatch } = useStudy();
@@ -54,7 +55,7 @@ function SharedSvgDefs() {
 
 export function Layout() {
   const { bundle } = useContent();
-  const { statusMessage, saveError, recovery } = useStudy();
+  const { statusMessage, saveError, recovery, data } = useStudy();
   const [navOpen, setNavOpen] = useState(false);
   const loc = useLocation();
   const reviewCount = useReviewCount();
@@ -97,6 +98,7 @@ export function Layout() {
           <LevelToggle />
         </div>
       </header>
+      {data.settings.level === 'medical' && <MedToolbar />}
       <SharedSvgDefs />
       {recovery && (
         <div className="banner banner-recovery" role="alert">
@@ -136,6 +138,7 @@ export function Layout() {
             {link('/explore/3d', '3D body')}
             {link('/explore/body', 'Explore the body')}
             {link('/journey', 'Follow an Oxygen Molecule')}
+            {link('/lesson/organ-tour', 'Beyond the Lungs (3D tour)')}
           </ul>
           <p className="nav-head">Systems</p>
           <ul>

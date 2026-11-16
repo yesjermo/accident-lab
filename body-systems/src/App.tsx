@@ -11,6 +11,7 @@ import { LabelingExercisePage, LabelingIndex, QuizPage } from './pages/PracticeP
 import { ReviewPage } from './pages/ReviewPage';
 import { MyStudyPage } from './pages/MyStudyPage';
 import { AboutPage, NotFound, SourcesPage } from './pages/InfoPages';
+import { ClinicalPage, EquationsPage } from './pages/MedicalPages';
 import type { ContentRepository } from './content/repository';
 import type { StudyRepository } from './study/persistence';
 
@@ -44,6 +45,9 @@ export function AppRoutes() {
         <Route path="journey" element={<JourneyPage />} />
         <Route path="journey/complete" element={<JourneyComplete />} />
         <Route path="journey/:stepId" element={<JourneyPage />} />
+        <Route path="lesson/:lessonId" element={<JourneyPage />} />
+        <Route path="lesson/:lessonId/complete" element={<JourneyComplete />} />
+        <Route path="lesson/:lessonId/:stepId" element={<JourneyPage />} />
         <Route path="system/:id" element={<SystemPage />} />
         <Route path="concept/:id" element={<ConceptPage />} />
         <Route path="mechanisms" element={<MechanismsPage />} />
@@ -61,6 +65,8 @@ export function AppRoutes() {
         <Route path="review" element={<ReviewPage />} />
         <Route path="study" element={<MyStudyPage />} />
         <Route path="sources" element={<SourcesPage />} />
+        <Route path="equations" element={<EquationsPage />} />
+        <Route path="clinical" element={<ClinicalPage />} />
         <Route path="about" element={<AboutPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>

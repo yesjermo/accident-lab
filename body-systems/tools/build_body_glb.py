@@ -13,9 +13,9 @@ The optional za_parts.blend (made by tools/extract_zanatomy.py) adds Z-Anatomy's
 lung-lobe surfaces and thigh muscles, already aligned to BodyParts3D coordinates.
 BodyParts3D has neither; without it the lungs show only as bronchial trees.
 
-Each group below becomes one named mesh in the GLB. Group names that match a
-structure ID in src/content/structures.ts are selectable in the app; the rest
-are context organs marked "planned". Mesh shapes are not edited, only merged
+Each group below becomes one named mesh in the GLB. Group names match
+structure IDs in src/content (structures.ts, organs.ts), so every mesh opens
+its lesson. Mesh shapes are not edited, only merged
 and decimated, so anatomy stays as published.
 """
 import os
@@ -34,15 +34,15 @@ GROUPS = [
     ('heart', ['FMA7088'], 0.35),
     ('bronchial-tree', ['FMA7309', 'FMA7310'], 0.35),
     ('diaphragm', ['FMA13295'], 0.5),
-    ('planned-brain', ['FMA50801'], 0.15),
-    ('planned-esophagus', ['FMA7131'], 0.5),
-    ('planned-liver', ['FMA7197'], 0.2),
-    ('planned-stomach', ['FMA7148'], 0.4),
-    ('planned-pancreas', ['FMA7198'], 0.4),
-    ('planned-kidneys', ['FMA7204', 'FMA7205'], 0.4),
-    ('planned-small-intestine', ['FMA7200'], 0.3),
-    ('planned-large-intestine', ['FMA7201'], 0.3),
-    ('planned-bladder', ['FMA15900'], 0.5),
+    ('brain', ['FMA50801'], 0.15),
+    ('esophagus', ['FMA7131'], 0.5),
+    ('liver', ['FMA7197'], 0.2),
+    ('stomach', ['FMA7148'], 0.4),
+    ('pancreas', ['FMA7198'], 0.4),
+    ('kidneys', ['FMA7204', 'FMA7205'], 0.4),
+    ('small-intestine', ['FMA7200'], 0.3),
+    ('large-intestine', ['FMA7201'], 0.3),
+    ('urinary-bladder', ['FMA15900'], 0.5),
     ('skeleton', ['FMA23876'], 0.08),
     ('skin', ['FMA7163'], 0.12),
 ]
