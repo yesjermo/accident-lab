@@ -11,3 +11,4 @@ __pycache__/
 .impeccable/
 hairline/*.png
 hairline/hairline-*.html
+web/body-systems/

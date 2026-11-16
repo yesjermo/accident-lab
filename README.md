@@ -26,6 +26,10 @@ A study project that walks through six accidents three ways:
 
 > Educational only. In a real emergency, call 911 / 112 / 999 first.
 
+## Body Systems Explorer
+
+A separate study app in [`body-systems/`](body-systems/) (React + TypeScript). It follows an oxygen molecule from the air to the mitochondrion and connects anatomy, physiology, biology and chemistry along the way. It has a dissociation-curve experiment, quizzes, labeling, flashcards and source records for every item. Once deployed it lives at `/accident-lab/body-systems/`. See its [README](body-systems/README.md).
+
 ## Run it
 
 ```bash
