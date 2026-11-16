@@ -91,6 +91,9 @@ export function Layout() {
           Body Systems Explorer
         </NavLink>
         <span className="topbar-tag">Educational only · not for diagnosis or treatment</span>
+        <a className="topbar-sister" href="../">
+          <span aria-hidden="true">←</span> Accident Lab
+        </a>
         <div className="topbar-right">
           <span className="field-label inline" id="level-label">
             Level

@@ -33,6 +33,8 @@
   .brand { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
   .brand i { font-weight: 400; font-style: normal; font-size: 15px; color: var(--muted); margin-left: 8px; letter-spacing: 0; }
   .sos { font-size: 14px; color: var(--ink-2); }
+  .mast-link { margin-left: auto; font-size: 14px; font-weight: 700; color: var(--ink); text-decoration: none; border-bottom: 2px solid var(--accent); padding: 2px 0; }
+  .mast-link:hover, .mast-link:focus-visible { color: var(--accent); }
   .sos b { color: var(--accent); }
   .tabs { display: flex; gap: 28px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
@@ -198,6 +200,7 @@
 <header class="mast">
   <div class="mast-top">
     <h1 class="brand">Accident Lab <i>physics, engineering and the trauma surgeon's view</i></h1>
+    <a class="mast-link" href="body-systems/">Body Systems Explorer <span aria-hidden="true">→</span></a>
     <span class="sos">In an emergency call <b>911 · 112 · 999</b> first.</span>
   </div>
   <nav class="tabs" id="tabs" role="tablist" aria-label="Accident"></nav>

@@ -4,7 +4,14 @@ An interactive study app for premedical and medical students that connects anato
 
 **body system → organ → tissue → cell → molecular mechanism → clinical application.**
 
-The first release covers the cardiovascular and respiratory systems. They are joined by one guided journey, **Follow an Oxygen Molecule**, which traces O₂ from inhalation, through gas exchange and transport in blood, to delivery in tissue and use in the mitochondrion, and then follows CO₂ back out.
+**Live: [yesjermo.github.io/accident-lab/body-systems](https://yesjermo.github.io/accident-lab/body-systems/)**
+
+The cardiovascular and respiratory systems are covered in depth. Two guided lessons tie the content together:
+
+- **Follow an Oxygen Molecule** traces O₂ from inhalation, through gas exchange and transport in blood, to delivery in tissue and use in the mitochondrion, and then follows CO₂ back out.
+- **Beyond the Lungs (3D tour)** shows how the brain, kidneys, bone marrow, gut, liver and skin control, supply or protect that journey.
+
+Every organ in the transparent 3D body has a lesson panel.
 
 > Educational only. Nothing here is a diagnosis, a patient-specific prediction or a treatment recommendation. Content is source-checked by the author; **no subject-expert review has taken place yet.**
 
@@ -16,7 +23,7 @@ Requires Node 18+.
 cd body-systems
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 60 tests: science, study logic, content integrity, UI flows
+npm test           # 71 tests: science, study logic, content integrity, 3D model, UI flows
 npm run build      # static site in dist/ (relative paths, hash routing)
 ```
 
@@ -47,13 +54,13 @@ src/
                          questions, flashcards, labeling, resources, simulations, sources, provenance
   content/               Editorial content as typed data (no JSX), plus ContentRepository
     sources.ts           Source registry and section references (REF.*)
-    structures.ts        28 structures × 5 lenses, at two reading levels
+    structures.ts        28 cardiorespiratory structures × 5 lenses, at two reading levels
     concepts.ts          8 mechanisms with "Why" layers, equations, concept-map edges, glossary
     lesson.ts            The oxygen journey (7 steps, 7 objectives)
     organs.ts            Brain, digestive, urinary, skeletal and skin structures (3D-only views)
     tourLesson.ts        "Beyond the Lungs" 3D organ tour (6 steps, 5 objectives, 9 questions)
     medical.ts           Derived lists for the Medical Student toolbar (clinical items, equations)
-    questions.ts         19 MCQs; every choice has an explanation
+    questions.ts         19 MCQs for the oxygen journey; every choice has an explanation
     practice.ts          Flashcards, labeling exercises, curated resources, simulation spec
     repository.ts        ContentRepository interface + StaticContentRepository
   science/               Pure, tested functions
@@ -137,8 +144,8 @@ See [CONTENT_SOURCES.md](CONTENT_SOURCES.md) and [ASSETS.md](ASSETS.md).
 
 - No subject-expert review yet. StatPearls was checked from abstracts only, because full text was blocked by a browser check at the time.
 - The diagrams are deliberately schematic. They are not to scale and not a substitute for an atlas.
-- The 3D body combines two datasets. The lungs and thigh muscles come from Z-Anatomy and are aligned to within about 6.5 mm (RMSE). Organs outside the cardiorespiratory system are context only and marked Planned.
-- There is one experiment, one learning path, and two systems in depth.
+- The 3D body combines two datasets. The lungs and thigh muscles come from Z-Anatomy and are aligned to within about 6.5 mm (RMSE). The panels for the other organs are shorter than the cardiorespiratory ones and focus on how each organ relates to oxygen transport.
+- There is one experiment and two learning paths. The cardiovascular and respiratory systems are covered in depth; the other systems are introductory.
 - Progress lives in one browser. Use Export/Import to move it.
 - Anki header lines need Anki 2.1.55 or later. On older versions, delete the first four lines before importing.
 
@@ -148,5 +155,5 @@ See [CONTENT_SOURCES.md](CONTENT_SOURCES.md) and [ASSETS.md](ASSETS.md).
 2. Find accessible sources for the draft items, or rewrite them.
 3. Add a FastAPI + PostgreSQL backend behind `ContentRepository` and `StudyRepository`, then accounts and sync.
 4. Add shared study collections, using the `collectionId` and `visibility` fields.
-5. Add more experiments (alveolar gas equation, O₂ content versus Hb) and more systems (renal acid–base, control of breathing).
-6. Add 3D lessons for the context organs. Z-Anatomy can supply more structures, apart from its non-commercial parts.
+5. Add more experiments (alveolar gas equation, O₂ content versus Hb).
+6. Deepen the other organs into full learning paths (renal acid–base, control of breathing, digestion). Z-Anatomy can supply more 3D structures, apart from its non-commercial parts.

@@ -500,3 +500,7 @@ textarea, input[type='url'], input:not([type]), input[type='text'] { width: 100%
   .hover-menu-panel { position: fixed; left: 8px; right: 8px; top: auto; max-width: none; }
 }
 @media (max-width: 920px) { .med-toolbar { position: static; } }
+
+.topbar-sister { font: 500 13px var(--sans); color: var(--muted); text-decoration: none; }
+.topbar-sister:hover { color: var(--accent); }
+@media (max-width: 1180px) { .topbar-sister { display: none; } }

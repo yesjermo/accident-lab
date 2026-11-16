@@ -5,9 +5,16 @@
 ![Python](https://img.shields.io/badge/python-3%20·%20stdlib%20only-1c1c22?style=flat-square&logo=python&logoColor=white)
 ![Three.js](https://img.shields.io/badge/three.js-0.160-1c1c22?style=flat-square&logo=threedotjs&logoColor=white)
 ![Blender](https://img.shields.io/badge/blender-5.3-1c1c22?style=flat-square&logo=blender&logoColor=white)
-![Scenarios](https://img.shields.io/badge/scenarios-5-1c1c22?style=flat-square)
+![Scenarios](https://img.shields.io/badge/scenarios-6-1c1c22?style=flat-square)
+[![Body Systems Explorer](https://img.shields.io/badge/body%20systems%20explorer-live-b01630?style=flat-square)](https://yesjermo.github.io/accident-lab/body-systems/)
+![React](https://img.shields.io/badge/react-18%20·%20typescript-1c1c22?style=flat-square&logo=react&logoColor=white)
 
-**Try it in the browser: [yesjermo.github.io/accident-lab](https://yesjermo.github.io/accident-lab/)**. Pick an accident and watch the Blender film and the live 3D scene play in sync, then read the physics and the medical notes under it.
+**Try it in the browser.** The site hosts two apps:
+
+- **[Accident Lab](https://yesjermo.github.io/accident-lab/):** pick an accident, watch the Blender film and the live 3D scene play in sync, then read the physics and the medical notes under it.
+- **[Body Systems Explorer](https://yesjermo.github.io/accident-lab/body-systems/):** a study app for premed and medical students. It connects anatomy, physiology, biology and chemistry, from a transparent 3D body down to the molecule. [Jump to it](#body-systems-explorer).
+
+The rest of this section covers Accident Lab.
 
 A study project that walks through six accidents three ways:
 
@@ -28,7 +35,38 @@ A study project that walks through six accidents three ways:
 
 ## Body Systems Explorer
 
-A separate study app in [`body-systems/`](body-systems/) (React + TypeScript). It follows an oxygen molecule from the air to the mitochondrion and connects anatomy, physiology, biology and chemistry along the way. It has a dissociation-curve experiment, quizzes, labeling, flashcards and source records for every item. Once deployed it lives at `/accident-lab/body-systems/`. See its [README](body-systems/README.md).
+**Live: [yesjermo.github.io/accident-lab/body-systems](https://yesjermo.github.io/accident-lab/body-systems/)**. The source is in [`body-systems/`](body-systems/) (React + TypeScript + Vite).
+
+The app moves between scales: body system → organ → tissue → cell → molecular mechanism → clinical application.
+
+| Feature | What a student can do |
+|---|---|
+| **3D body** | Rotate a transparent full body built from real anatomical meshes (BodyParts3D, with Z-Anatomy lung lobes and thigh muscles). Click any organ to open its lesson; the camera flies to it, and the skin, skeleton and other organs can be toggled |
+| **Follow an Oxygen Molecule** | A 7-step guided path from inhalation, through gas exchange and hemoglobin and the left heart, to delivery in tissue, the mitochondrion, and CO₂ on the way back. Each step has a synchronised diagram |
+| **Beyond the Lungs (3D tour)** | A 6-step 3D lesson on how other organs support oxygen transport: the brainstem's control of breathing, kidneys and EPO, red bone marrow, gut to liver, pH control and skin |
+| **Organ panels** | 28 cardiorespiratory structures and 11 other organs, each with Anatomy, Physiology, Biology, Chemistry, Clinical and Study tabs, at Foundation or Medical Student level |
+| **Why does this happen?** | Layered explanations from intuition to molecules, for diffusion, hemoglobin binding, membranes, mitochondria and ATP, and CO₂ and acid–base. Every equation explains each variable and unit and states its limits. A concept map explains each link |
+| **Experiment** | The O₂–hemoglobin dissociation curve (Severinghaus 1979). Predict the shift, then see it, with the baseline, assumptions and supported range |
+| **Practice and review** | Quiz with every answer explained, diagram labeling (tap or keyboard), Leitner flashcards, a review queue, and progress by learning objective |
+| **Medical Student toolbar** | At that level, hover, tap or keyboard menus for clinical connections, an equation sheet, mechanisms and review |
+| **Your study data** | Notes, bookmarks and attached links, saved in the browser. Anki CSV export of your own flashcards, plus JSON export and import |
+| **Sources** | Every item records its sources, version, verification date and review status. Unverified items are marked *Draft*, and nothing claims expert review |
+
+```bash
+cd body-systems
+npm install
+npm run dev        # local dev server
+npm test           # science, study logic, content integrity, UI flows
+npm run build      # static site; the Pages workflow builds it into web/body-systems/
+```
+
+Details:
+
+- [Architecture, scope and limits](body-systems/README.md)
+- [Content sources](body-systems/CONTENT_SOURCES.md)
+- [Asset licences](body-systems/ASSETS.md): the 3D model file is CC BY-SA 4.0, and the app code is not affected.
+
+> Educational only. Body Systems Explorer does not diagnose or recommend treatment.
 
 ## Run it
 
@@ -100,3 +138,5 @@ Edit `ALL` at the bottom of `physics.py` (e.g. `lambda: physics.pedestrian(speed
 - `web/media/`: rendered films, copied there by `render_scenario.py --render`
 - `hairline/`, `web/hairline/`: the interactive figures' sources and built pages
 - `LESSONS.md`: generated: the full write-up, readable on its own
+- `body-systems/`: the Body Systems Explorer app (React + TypeScript). Content is in `src/content/`, tested science in `src/science/`, and the study-data logic in `src/study/`. `tools/` holds the Blender scripts that build `public/models/body.glb` from BodyParts3D and Z-Anatomy
+- `.github/workflows/`: `pages.yml` deploys `web/` plus the built Body Systems Explorer; `body-systems-ci.yml` tests the app on PRs and on pushes to `main`
