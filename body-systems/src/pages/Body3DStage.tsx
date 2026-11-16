@@ -71,7 +71,7 @@ export default function Body3DStage({ selectedMesh, onSelect }: { selectedMesh: 
         </ul>
       </div>
       <p className="muted small attribution">
-        3D model: {BODY3D_ATTRIBUTION} Thigh muscle is not in this dataset; see the Tissue &amp; cell diagram.
+        3D model: {BODY3D_ATTRIBUTION}
       </p>
     </div>
   );

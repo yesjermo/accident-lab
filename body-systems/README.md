@@ -26,7 +26,7 @@ The build is a static site, so it can be served from any sub-path. The repo's Pa
 
 | Acceptance criterion | Where |
 |---|---|
-| Explore in 3D | **3D body** (`#/explore/3d`): a transparent full body built from BodyParts3D anatomical meshes. Rotate, zoom, and click an organ to open its panel; the skin and skeleton layers can be toggled. An organ list gives keyboard access, and the 2D diagrams are the fallback without WebGL |
+| Explore in 3D | **3D body** (`#/explore/3d`): a transparent full body built from BodyParts3D anatomical meshes, with lung lobes and thigh muscles from Z-Anatomy. Selecting an organ flies the camera to it. Rotate, zoom, and click an organ to open its panel; the skin and skeleton layers can be toggled. An organ list gives keyboard access, and the 2D diagrams are the fallback without WebGL |
 | Select the heart or lungs | **Explore the body** (`#/explore/body`). Click or Tab+Enter on the drawing, or use the structure list under it |
 | Complete the oxygen journey | **Follow an Oxygen Molecule** (`#/journey`): 7 steps, synchronised diagram, objectives, prerequisites, glossary, a knowledge check per step |
 | Go from anatomy to biology and chemistry | Detail panel tabs (Anatomy / Physiology / Biology / Chemistry / Clinical / Study). "Why does this happen?" links open layered mechanism pages with a **Back to …** link |
@@ -64,7 +64,8 @@ src/
     grading.ts           Quiz scoring and labeling grading
   diagrams/              Original schematic SVG definitions (regions, anchors, labels)
   components/Body3D.tsx  three.js viewer for public/models/body.glb; catalogue in content/body3d.ts
-tools/build_body_glb.py  Blender script: BodyParts3D OBJ → per-organ, Draco-compressed GLB
+tools/build_body_glb.py  Blender script: BodyParts3D OBJ (+ Z-Anatomy parts) → per-organ, Draco-compressed GLB
+tools/extract_zanatomy.py  Blender script: Z-Anatomy lung lobes and thigh muscles, aligned to BodyParts3D
   components/            Diagram, DetailPanel, QuestionCard, WhyExplainer, Provenance, StudyTools, states
   pages/                 Route screens
 ```
@@ -131,10 +132,7 @@ See [CONTENT_SOURCES.md](CONTENT_SOURCES.md) and [ASSETS.md](ASSETS.md).
 
 - No subject-expert review yet. StatPearls was checked from abstracts only, because full text was blocked by a browser check at the time.
 - The diagrams are deliberately schematic. They are not to scale and not a substitute for an atlas.
-- The 3D body is limited by BodyParts3D 4.0:
-  - The lungs appear as their bronchial and vascular trees, because the dataset has no lung-surface mesh.
-  - Thigh muscle appears only in 2D, because the dataset has no individual thigh-muscle meshes.
-  - Organs outside the cardiorespiratory system are context only and marked Planned.
+- The 3D body combines two datasets. The lungs and thigh muscles come from Z-Anatomy and are aligned to within about 6.5 mm (RMSE). Organs outside the cardiorespiratory system are context only and marked Planned.
 - There is one experiment, one learning path, and two systems in depth.
 - Progress lives in one browser. Use Export/Import to move it.
 - Anki header lines need Anki 2.1.55 or later. On older versions, delete the first four lines before importing.
@@ -146,4 +144,4 @@ See [CONTENT_SOURCES.md](CONTENT_SOURCES.md) and [ASSETS.md](ASSETS.md).
 3. Add a FastAPI + PostgreSQL backend behind `ContentRepository` and `StudyRepository`, then accounts and sync.
 4. Add shared study collections, using the `collectionId` and `visibility` fields.
 5. Add more experiments (alveolar gas equation, O₂ content versus Hb) and more systems (renal acid–base, control of breathing).
-6. Add 3D lessons for the context organs. Consider the larger BodyParts3D IS-A set or Z-Anatomy for lung surfaces and muscles, after a licence check.
+6. Add 3D lessons for the context organs. Z-Anatomy can supply more structures, apart from its non-commercial parts.

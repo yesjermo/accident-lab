@@ -113,6 +113,15 @@ export const SOURCES: Source[] = [
     kind: 'reference',
   },
   {
+    id: 'z-anatomy',
+    title: 'Z-Anatomy: The libre 3D atlas of anatomy (Blender template)',
+    authors: 'Kervyn G, Zielinski M, Vinent L, et al.; derived from BodyParts3D (Okubo K, DBCLS)',
+    publisher: 'Z-Anatomy project, GitHub',
+    url: 'https://github.com/Z-Anatomy/Models-of-human-anatomy',
+    license: 'CC BY-SA 4.0 (lung lobes and thigh muscles only; its non-commercial inner-ear and kidney models are not used)',
+    kind: 'reference',
+  },
+  {
     id: 'khan-bohr-haldane',
     title: 'Bohr effect vs. Haldane effect',
     authors: 'Khan Academy Medicine',

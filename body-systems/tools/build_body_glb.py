@@ -7,7 +7,11 @@ Current licence page: CC BY 4.0. The 2011 OBJ files carry a CC BY-SA 2.1 JP
 header, so the derived model is distributed under CC BY-SA (see ASSETS.md).
 
 Usage (Blender 4+/5):
-  blender -b -P tools/build_body_glb.py -- <dir with partof_element_parts.txt and partof_BP3D_4.0_obj_99/> <out.glb>
+  blender -b -P tools/build_body_glb.py -- <dir with partof_element_parts.txt and partof_BP3D_4.0_obj_99/> <out.glb> [za_parts.blend]
+
+The optional za_parts.blend (made by tools/extract_zanatomy.py) adds Z-Anatomy's
+lung-lobe surfaces and thigh muscles, already aligned to BodyParts3D coordinates.
+BodyParts3D has neither; without it the lungs show only as bronchial trees.
 
 Each group below becomes one named mesh in the GLB. Group names that match a
 structure ID in src/content/structures.ts are selectable in the app; the rest
@@ -28,7 +32,7 @@ GROUPS = [
     ('vena-cava', ['FMA4720', 'FMA10951'], 0.6),
     ('trachea', ['FMA7394', 'FMA7395', 'FMA7396'], 0.6),
     ('heart', ['FMA7088'], 0.35),
-    ('lungs', ['FMA7309', 'FMA7310'], 0.35),
+    ('bronchial-tree', ['FMA7309', 'FMA7310'], 0.35),
     ('diaphragm', ['FMA13295'], 0.5),
     ('planned-brain', ['FMA50801'], 0.15),
     ('planned-esophagus', ['FMA7131'], 0.5),
@@ -47,6 +51,7 @@ GROUPS = [
 def main():
     argv = sys.argv[sys.argv.index('--') + 1 :]
     src, out = argv[0], argv[1]
+    za_parts = argv[2] if len(argv) > 2 else None
     objdir = os.path.join(src, 'partof_BP3D_4.0_obj_99')
 
     elements: dict[str, list[str]] = {}
@@ -114,6 +119,25 @@ def main():
         bpy.ops.object.shade_smooth()
         tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
         report.append((name, len(files), tris_before, tris))
+
+    # Z-Anatomy additions: (name in za_parts.blend, mesh name in GLB, decimate ratio).
+    if za_parts:
+        additions = [('za-lungs', 'lungs', 0.6), ('za-thigh-muscles', 'thigh-muscles', 0.2)]
+        with bpy.data.libraries.load(za_parts) as (src_data, dst_data):
+            dst_data.objects = [n for n, _, _ in additions if n in src_data.objects]
+        for (src_name, name, ratio), obj in zip(additions, dst_data.objects):
+            bpy.context.scene.collection.objects.link(obj)
+            obj.name = name
+            obj.data.name = name
+            bpy.ops.object.select_all(action='DESELECT')
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = obj
+            tris_before = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+            mod = obj.modifiers.new('decimate', 'DECIMATE')
+            mod.ratio = ratio
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+            bpy.ops.object.shade_smooth()
+            report.append((name + ' (Z-Anatomy)', 0, tris_before, sum(len(p.vertices) - 2 for p in obj.data.polygons)))
 
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.export_scene.gltf(

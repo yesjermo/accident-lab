@@ -66,6 +66,7 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
     meshes: Map<string, THREE.Mesh>;
     render: () => void;
     reset: () => void;
+    focus: (mesh: THREE.Mesh) => void;
   } | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -101,6 +102,39 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
       camera.position.copy(home.position);
       controls.update();
       render();
+    };
+
+    // Fly the camera to a mesh, keeping the current viewing direction.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let flight = 0;
+    const focus = (mesh: THREE.Mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      const size = box.getSize(new THREE.Vector3()).length();
+      const target = box.getCenter(new THREE.Vector3());
+      const dir = camera.position.clone().sub(controls.target).normalize();
+      const dist = Math.max(0.45, size * 1.6);
+      const toPos = target.clone().add(dir.multiplyScalar(dist));
+      const fromPos = camera.position.clone();
+      const fromTarget = controls.target.clone();
+      cancelAnimationFrame(flight);
+      if (reduceMotion) {
+        controls.target.copy(target);
+        camera.position.copy(toPos);
+        controls.update();
+        render();
+        return;
+      }
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / 450);
+        const e = 1 - (1 - t) ** 3;
+        controls.target.lerpVectors(fromTarget, target, e);
+        camera.position.lerpVectors(fromPos, toPos, e);
+        controls.update();
+        render();
+        if (t < 1) flight = requestAnimationFrame(step);
+      };
+      flight = requestAnimationFrame(step);
     };
 
     const draco = new DRACOLoader();
@@ -141,7 +175,7 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
         const height = whole.max.y - whole.min.y;
         home = { target: centre.clone(), position: centre.clone().add(new THREE.Vector3(0, 0.05, height * 0.75)) };
         reset();
-        api.current = { meshes, render, reset };
+        api.current = { meshes, render, reset, focus };
         setState('ready');
       },
       undefined,
@@ -198,6 +232,7 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(flight);
       ro.disconnect();
       controls.dispose();
       draco.dispose();
@@ -238,6 +273,12 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
   useEffect(() => {
     if (resetKey > 0) api.current?.reset();
   }, [resetKey]);
+
+  // Bring the selected organ into view (from a click or from the organ list).
+  useEffect(() => {
+    const m = selected ? api.current?.meshes.get(selected) : undefined;
+    if (m) api.current!.focus(m);
+  }, [selected, state]);
 
   return (
     <div className="body3d">
