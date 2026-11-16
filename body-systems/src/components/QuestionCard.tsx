@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Question } from '../domain/types';
 import { nowIso, useStudy } from '../data/study';
 import type { QuestionContext } from '../study/model';
@@ -23,12 +23,27 @@ export function QuestionCard({
   const { dispatch } = useStudy();
   const [choice, setChoice] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  /** After the answer has been revealed, retries are practice only and are not recorded as evidence. */
+  const [revealed, setRevealed] = useState(false);
+  const [counted, setCounted] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  const fieldsetRef = useRef<HTMLFieldSetElement>(null);
+  const [focusTarget, setFocusTarget] = useState<'feedback' | 'choices' | null>(null);
+  useEffect(() => {
+    if (focusTarget === 'feedback') feedbackRef.current?.focus();
+    if (focusTarget === 'choices') fieldsetRef.current?.querySelector('input')?.focus();
+    setFocusTarget(null);
+  }, [focusTarget]);
   const correct = choice === question.correctChoiceId;
   const name = `q-${question.id}-${context}`;
 
   const submit = () => {
     if (!choice || submitted) return;
     setSubmitted(true);
+    setFocusTarget('feedback');
+    setCounted(!revealed);
+    if (revealed) return;
+    setRevealed(true);
     dispatch({ type: 'recordAttempt', attempt: { questionId: question.id, choiceId: choice, correct, at: nowIso(), context } });
     onAnswered?.(correct);
   };
@@ -41,7 +56,7 @@ export function QuestionCard({
         submit();
       }}
     >
-      <fieldset disabled={submitted}>
+      <fieldset disabled={submitted} ref={fieldsetRef}>
         <legend>
           {heading && <span className="eyebrow">{heading}</span>}
           <span className="question-stem">{question.stem}</span>
@@ -65,7 +80,7 @@ export function QuestionCard({
           Check answer
         </button>
       ) : (
-        <div className={`feedback ${correct ? 'is-correct' : 'is-wrong'}`} role="status" aria-live="polite">
+        <div ref={feedbackRef} tabIndex={-1} className={`feedback ${correct ? 'is-correct' : 'is-wrong'}`} role="status" aria-live="polite">
           <p className="feedback-head">{correct ? '✓ Correct.' : '✗ Not quite.'}</p>
           {!correct && choice && (
             <p>
@@ -76,13 +91,15 @@ export function QuestionCard({
             <strong>{correct ? 'Why:' : 'Correct answer:'}</strong>{' '}
             {question.choices.find((c) => c.id === question.correctChoiceId)?.explanation.replace(/^Correct\.\s*/, '')}
           </p>
-          {!correct && <p className="muted">Added to your review queue.</p>}
+          {!correct && counted && <p className="muted">Added to your review queue.</p>}
+          {!counted && <p className="muted small">Practice retry: answers given after seeing the solution don't count as evidence.</p>}
           <button
             type="button"
             className="btn btn-quiet"
             onClick={() => {
               setChoice(null);
               setSubmitted(false);
+              setFocusTarget('choices');
             }}
           >
             Try again
@@ -93,3 +110,4 @@ export function QuestionCard({
     </form>
   );
 }
+

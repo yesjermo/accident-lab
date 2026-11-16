@@ -44,15 +44,6 @@ export function Diagram({ diagram, selectedId, highlight = [], onSelect, markers
       >
         <title id={`${uid}-t`}>{def.title}</title>
         <desc id={`${uid}-d`}>{def.description}</desc>
-        <defs>
-          <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect width="6" height="6" className="hatch-bg" />
-            <line x1="0" y1="0" x2="0" y2="6" className="hatch-line" strokeWidth="2.2" />
-          </pattern>
-          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0 L10 5 L0 10 z" className="arrow-head" />
-          </marker>
-        </defs>
         <g className="bg">{def.background}</g>
         {def.regions.map((r) => {
           const isSel = r.id === selectedId;

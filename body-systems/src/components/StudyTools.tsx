@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { nowIso, useStudy } from '../data/study';
 import { useContent } from '../data/content';
@@ -25,14 +25,21 @@ export function BookmarkButton({ target, label }: { target: StudyTarget; label: 
 export function NoteEditor({ target, label }: { target: StudyTarget; label: string }) {
   const { data, dispatch } = useStudy();
   const existing = data.notes.find((n) => sameTarget(n.target, target));
-  const [text, setText] = useState(existing?.text ?? '');
+  const stored = existing?.text ?? '';
+  const [text, setText] = useState(stored);
   const [saved, setSaved] = useState(false);
+  const editing = useRef(false);
+  // Follow the stored note when the target changes, or when it changes elsewhere
+  // (import, deletion, another tab) and the student has no unsaved edits.
   useEffect(() => {
-    setText(existing?.text ?? '');
-    // reset when the target changes
+    editing.current = false;
+    setText(stored);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target.kind, target.id]);
-  const dirty = text.trim() !== (existing?.text ?? '');
+  useEffect(() => {
+    if (!editing.current) setText(stored);
+  }, [stored]);
+  const dirty = text.trim() !== stored;
   const id = `note-${target.kind}-${target.id}`;
   return (
     <div className="note-editor user-content">
@@ -44,6 +51,7 @@ export function NoteEditor({ target, label }: { target: StudyTarget; label: stri
         rows={4}
         value={text}
         onChange={(e) => {
+          editing.current = true;
           setText(e.target.value);
           setSaved(false);
         }}
@@ -56,6 +64,7 @@ export function NoteEditor({ target, label }: { target: StudyTarget; label: stri
           disabled={!dirty}
           onClick={() => {
             dispatch({ type: 'saveNote', target, text, now: nowIso() });
+            editing.current = false;
             setSaved(true);
           }}
         >

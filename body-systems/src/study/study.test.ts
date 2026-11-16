@@ -221,3 +221,24 @@ describe('Anki CSV export', () => {
     expect(csv.endsWith('\r\n')).toBe(true);
   });
 });
+
+describe('parse hardening', () => {
+  it('drops malformed elements and fills defaults instead of crashing later', () => {
+    const d = parseStudyData({
+      schemaVersion: 1,
+      lessons: { good: { completedStepIds: ['a'], lastStepId: null, completedAt: null }, bad: null, worse: { lastStepId: 'x' } },
+      labeling: [null, { exerciseId: 'e', at: 't', correct: 1, total: 2, missedStructureIds: ['b'] }],
+      predictions: [{ predicted: 'up' }],
+      cardSchedules: { c: { box: 1, reviews: 1, lapses: 0, dueAt: null, lastReviewedAt: null }, z: 3 },
+      userCards: [{ id: 'u', front: 'F', back: 'B' }],
+      bookmarks: [{ id: 'b', target: { kind: 'concept', id: 'c1' } }],
+    });
+    expect(Object.keys(d.lessons)).toEqual(['good']);
+    expect(d.labeling).toHaveLength(1);
+    expect(d.predictions).toHaveLength(0);
+    expect(Object.keys(d.cardSchedules)).toEqual(['c']);
+    expect(d.userCards[0].tags).toEqual([]);
+    expect(d.bookmarks[0].label).toBe('c1');
+    expect(() => toAnkiCsv(d.userCards)).not.toThrow();
+  });
+});

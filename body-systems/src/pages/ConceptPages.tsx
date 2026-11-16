@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useContent } from '../data/content';
 import { useStudy } from '../data/study';
 import { BackLink, ContextLink, WhyExplainer } from '../components/Explain';
@@ -128,6 +128,7 @@ const POS: Record<string, [number, number]> = {
 /** Concept map: nodes are mechanisms; edges are buttons that explain the link. */
 export function MechanismsPage() {
   const { bundle, ix } = useContent();
+  const navigate = useNavigate();
   const [sel, setSel] = useState<string | null>(null);
   const rel = bundle.relationships.find((r) => r.id === sel);
 
@@ -207,7 +208,14 @@ export function MechanismsPage() {
               }
               return (
                 <g key={id} className={`node${core ? ' is-core' : ''}`}>
-                  <a href={`#/concept/${id}`} aria-label={`Open ${c.name}`}>
+                  <a
+                    href={`#/concept/${id}`}
+                    aria-label={`Open ${c.name}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate(`/concept/${id}`, { state: { from: { label: 'the concept map', path: '/mechanisms' } } });
+                    }}
+                  >
                     <rect x={x - 70} y={y - 12 - lines.length * 8} width="140" height={24 + lines.length * 16} rx="10" />
                     {lines.map((l, i) => (
                       <text key={i} x={x} y={y + 5 - (lines.length - 1) * 8 + i * 16} textAnchor="middle">

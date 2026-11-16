@@ -88,7 +88,7 @@ export function MyStudyPage() {
                 <td>
                   {o.correct} correct of {o.attempted} tried · {o.total} questions
                   <div className="meter" aria-hidden="true">
-                    <span style={{ width: `${(100 * o.correct) / o.total}%` }} />
+                    <span style={{ width: `${o.total ? (100 * o.correct) / o.total : 0}%` }} />
                   </div>
                 </td>
               </tr>
@@ -240,7 +240,7 @@ export function MyStudyPage() {
                 >
                   Replace and import
                 </button>
-                <button type="button" className="btn" onClick={() => setPendingImport(null)}>
+                <button type="button" className="btn" onClick={() => setPendingImport(null)} autoFocus>
                   Cancel
                 </button>
               </div>

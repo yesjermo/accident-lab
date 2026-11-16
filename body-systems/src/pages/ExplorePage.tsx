@@ -54,13 +54,12 @@ export function ExplorePage() {
         <BackLink />
         <div className="stage-head">
           <h1 id="stage-title">{DIAGRAMS[d].title}</h1>
-          <div className="segmented" role="tablist" aria-label="Choose a diagram (scale)">
+          <div className="segmented" role="group" aria-label="Choose a diagram (scale)">
             {ORDER.map((id) => (
               <button
                 key={id}
                 type="button"
-                role="tab"
-                aria-selected={id === d}
+                aria-pressed={id === d}
                 className={id === d ? 'is-on' : ''}
                 onClick={() => go(id, structureId && DIAGRAM_REGIONS[id].includes(structureId) ? structureId : undefined)}
               >

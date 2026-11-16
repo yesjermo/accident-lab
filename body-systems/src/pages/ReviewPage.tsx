@@ -29,7 +29,8 @@ export function ReviewPage() {
   const due = useMemo(() => dueCardIds(data, allCards.map((c) => c.id), snapshot), [allCards, snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
   const missed = useMemo(() => missedQuestionIds(data), []); // eslint-disable-line react-hooks/exhaustive-deps
   const fresh = allCards.filter((c) => isNew(data.cardSchedules[c.id]));
-  const [mode, setMode] = useState<'queue' | 'new' | null>(null);
+  // The session's cards are fixed when it starts; rating a card must not reshuffle the list.
+  const [session, setSession] = useState<ReviewCard[] | null>(null);
 
   return (
     <article className="page narrow">
@@ -52,23 +53,18 @@ export function ReviewPage() {
         </div>
       </div>
 
-      {mode === null && (
+      {session === null && (
         <div className="row wrap">
-          <button type="button" className="btn btn-primary" disabled={due.length === 0} onClick={() => setMode('queue')}>
+          <button type="button" className="btn btn-primary" disabled={due.length === 0} onClick={() => setSession(allCards.filter((c) => due.includes(c.id)))}>
             Review due cards
           </button>
-          <button type="button" className="btn" disabled={fresh.length === 0} onClick={() => setMode('new')}>
+          <button type="button" className="btn" disabled={fresh.length === 0} onClick={() => setSession(fresh.slice(0, 10))}>
             Learn new cards ({Math.min(10, fresh.length)})
           </button>
         </div>
       )}
 
-      {mode && (
-        <CardSession
-          cards={mode === 'queue' ? allCards.filter((c) => due.includes(c.id)) : fresh.slice(0, 10)}
-          onDone={() => setMode(null)}
-        />
-      )}
+      {session && <CardSession cards={session} onDone={() => setSession(null)} />}
 
       <section>
         <h2>Missed questions</h2>

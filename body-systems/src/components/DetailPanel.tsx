@@ -139,7 +139,7 @@ export function DetailPanel({
             )}
           </>
         ) : (
-          <StudyTab structureId={structure.id} name={structure.name} />
+          <StudyTab key={structure.id} structureId={structure.id} name={structure.name} />
         )}
 
         <div className="related">

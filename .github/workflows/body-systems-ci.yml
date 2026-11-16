@@ -3,6 +3,9 @@ name: Body Systems Explorer CI
 on:
   pull_request:
     paths: ['body-systems/**', '.github/workflows/body-systems-ci.yml']
+  push:
+    branches: [main]
+    paths: ['body-systems/**', '.github/workflows/body-systems-ci.yml']
 
 permissions:
   contents: read

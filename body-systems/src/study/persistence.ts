@@ -11,6 +11,10 @@ export interface StudyRepository {
   load(): Promise<StudyData>;
   save(data: StudyData): Promise<void>;
   clear(): Promise<void>;
+  /** The stored text as-is, for recovery when it cannot be parsed. */
+  readRaw?(): string | null;
+  /** Notify when another tab or window changes the stored data. Returns an unsubscribe function. */
+  subscribe?(onChange: (data: StudyData) => void): () => void;
 }
 
 export const STORAGE_KEY = 'body-systems-explorer:study';
@@ -35,6 +39,14 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const rec = <T>(v: unknown): Record<string, T> => (isObj(v) ? (v as Record<string, T>) : {});
+const str = (v: unknown): v is string => typeof v === 'string';
+const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const strArr = (v: unknown): v is string[] => Array.isArray(v) && v.every(str);
+const isTarget = (v: unknown) => isObj(v) && str(v.kind) && str(v.id);
+const isDirection = (v: unknown) => v === 'left' || v === 'right' || v === 'none';
+/** Keep only the record entries whose value passes `ok`. */
+const recOf = <T>(v: unknown, ok: (x: Record<string, unknown>) => boolean): Record<string, T> =>
+  Object.fromEntries(Object.entries(rec<unknown>(v)).filter(([, x]) => isObj(x) && ok(x))) as Record<string, T>;
 
 /**
  * Turn any stored or imported JSON into valid current-version study data.
@@ -68,25 +80,34 @@ export function parseStudyData(input: unknown): StudyData {
     ...base,
     ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : base.ownerId,
     settings: { level },
-    lessons: rec(raw.lessons),
+    lessons: recOf(
+      raw.lessons,
+      (l) => strArr(l.completedStepIds) && (l.lastStepId === null || str(l.lastStepId)) && (l.completedAt === null || str(l.completedAt)),
+    ),
     attempts: arr<StudyData['attempts'][number]>(raw.attempts).filter(
-      (a) => isObj(a) && typeof a.questionId === 'string' && typeof a.correct === 'boolean',
+      (a) => isObj(a) && str(a.questionId) && str(a.choiceId) && typeof a.correct === 'boolean' && str(a.at),
     ),
-    labeling: arr(raw.labeling),
-    predictions: arr(raw.predictions),
-    cardSchedules: rec(raw.cardSchedules),
-    userCards: arr<StudyData['userCards'][number]>(raw.userCards).filter(
-      (c) => isObj(c) && typeof c.front === 'string' && typeof c.back === 'string',
+    labeling: arr<StudyData['labeling'][number]>(raw.labeling).filter(
+      (l) => isObj(l) && str(l.exerciseId) && num(l.correct) && num(l.total) && strArr(l.missedStructureIds) && str(l.at),
     ),
-    notes: arr<StudyData['notes'][number]>(raw.notes).filter(
-      (n) => isObj(n) && typeof n.text === 'string' && isObj(n.target),
+    predictions: arr<StudyData['predictions'][number]>(raw.predictions).filter(
+      (p) =>
+        isObj(p) && isDirection(p.predicted) && isDirection(p.actual) && isObj(p.conditions) && num(p.conditions.pH) && num(p.conditions.temperatureC),
     ),
-    bookmarks: arr<StudyData['bookmarks'][number]>(raw.bookmarks).filter(
-      (b) => isObj(b) && isObj(b.target),
+    cardSchedules: recOf(
+      raw.cardSchedules,
+      (c) => num(c.box) && num(c.reviews) && num(c.lapses) && (c.dueAt === null || str(c.dueAt)) && (c.lastReviewedAt === null || str(c.lastReviewedAt)),
     ),
-    userResources: arr<StudyData['userResources'][number]>(raw.userResources).filter(
-      (r) => isObj(r) && typeof r.url === 'string' && isSafeUrl(r.url),
-    ),
+    userCards: arr<StudyData['userCards'][number]>(raw.userCards)
+      .filter((c) => isObj(c) && str(c.id) && str(c.front) && str(c.back))
+      .map((c) => ({ ...c, tags: strArr(c.tags) ? c.tags : [], target: isTarget(c.target) ? c.target : null })),
+    notes: arr<StudyData['notes'][number]>(raw.notes).filter((n) => isObj(n) && str(n.id) && str(n.text) && isTarget(n.target)),
+    bookmarks: arr<StudyData['bookmarks'][number]>(raw.bookmarks)
+      .filter((b) => isObj(b) && str(b.id) && isTarget(b.target))
+      .map((b) => ({ ...b, label: str(b.label) ? b.label : b.target.id })),
+    userResources: arr<StudyData['userResources'][number]>(raw.userResources)
+      .filter((r) => isObj(r) && str(r.id) && str(r.url) && isSafeUrl(r.url) && isTarget(r.target))
+      .map((r) => ({ ...r, title: str(r.title) ? r.title : r.url, note: str(r.note) ? r.note : '' })),
   };
   return data;
 }
@@ -134,10 +155,32 @@ export class LocalStorageStudyRepository implements StudyRepository {
     try {
       return parseStudyData(JSON.parse(text));
     } catch (err) {
-      // Keep the unreadable copy so nothing is silently destroyed.
-      this.storage.setItem(`${this.key}:unreadable:${Date.now()}`, text);
+      // Try to keep a side copy too, but never let a full quota hide the real error.
+      // The original key is left untouched; the provider stops saving until the user decides.
+      try {
+        this.storage.setItem(`${this.key}:unreadable:${Date.now()}`, text);
+      } catch {
+        /* quota exceeded: the original key still holds the data */
+      }
       throw err instanceof StudyDataError ? err : new StudyDataError('Saved study data is corrupted.');
     }
+  }
+
+  readRaw(): string | null {
+    return this.storage.getItem(this.key);
+  }
+
+  subscribe(onChange: (data: StudyData) => void): () => void {
+    const handler = (e: StorageEvent) => {
+      if (e.key !== this.key || e.storageArea !== this.storage || !e.newValue) return;
+      try {
+        onChange(parseStudyData(JSON.parse(e.newValue)));
+      } catch {
+        /* another tab wrote something unreadable; ignore here, load() will report it */
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
   }
 
   async save(data: StudyData): Promise<void> {

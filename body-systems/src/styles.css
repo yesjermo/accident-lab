@@ -452,3 +452,8 @@ textarea, input[type='url'], input:not([type]), input[type='text'] { width: 100%
   .region.is-selected .shape *, .region.is-highlighted .shape * { stroke: Highlight; }
 }
 #panel-title { scroll-margin-top: 80px; }
+
+.svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+.banner-recovery { border-bottom-color: var(--bad); background: var(--bad-wash); }
+.banner-recovery p { margin: 0 0 4px; }
+.skip-link { border: 0; font: 600 15px var(--sans); cursor: pointer; }
