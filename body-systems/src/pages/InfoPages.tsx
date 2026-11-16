@@ -68,9 +68,10 @@ export function SourcesPage() {
         <p>
           The 3D body uses real anatomical meshes from <strong>BodyParts3D</strong> (© The Database Center for Life Science), merged
           per organ and polygon-reduced with Blender; shapes are not edited. The licence page states CC BY 4.0, while the 2011 files carry
-          a CC BY-SA 2.1 JP notice, so the derived model file is shared under CC BY-SA. The dataset has no lung-surface or individual
-          thigh-muscle meshes, so the lungs appear as their bronchial and vascular trees and thigh muscle is shown only in the 2D tissue
-          diagram. Nothing was sculpted or generated to fill these gaps.
+          a CC BY-SA 2.1 JP notice. BodyParts3D has no lung-surface or individual thigh-muscle meshes, so those come from{' '}
+          <strong>Z-Anatomy</strong> (CC BY-SA 4.0, itself derived from BodyParts3D), aligned to BodyParts3D coordinates by a
+          least-squares fit on 15 shared landmarks (RMSE 6.5 mm). Z-Anatomy's non-commercial parts are not used. The combined model
+          file is shared under CC BY-SA 4.0. Nothing was sculpted or generated.
         </p>
       </section>
 
