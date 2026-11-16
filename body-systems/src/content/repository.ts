@@ -47,24 +47,26 @@ export const CONTENT_VERSION = '2026.11.0';
 export class StaticContentRepository implements ContentRepository {
   async loadBundle(): Promise<ContentBundle> {
     // Dynamic import keeps content in its own chunk and exercises the loading state.
-    const [s, c, l, q, p, src] = await Promise.all([
+    const [s, c, l, q, p, src, o, t] = await Promise.all([
       import('./structures'),
       import('./concepts'),
       import('./lesson'),
       import('./questions'),
       import('./practice'),
       import('./sources'),
+      import('./organs'),
+      import('./tourLesson'),
     ]);
     return {
       version: CONTENT_VERSION,
-      systems: s.SYSTEMS,
-      structures: s.STRUCTURES,
+      systems: [...s.SYSTEMS, ...o.ORGAN_SYSTEMS],
+      structures: [...s.STRUCTURES, ...o.ORGAN_STRUCTURES],
       concepts: c.CONCEPTS,
       coreConceptIds: c.CORE_CONCEPT_IDS,
       relationships: c.RELATIONSHIPS,
       glossary: c.GLOSSARY,
-      lessons: [l.OXYGEN_JOURNEY],
-      questions: q.QUESTIONS,
+      lessons: [l.OXYGEN_JOURNEY, t.ORGAN_TOUR],
+      questions: [...q.QUESTIONS, ...t.TOUR_QUESTIONS],
       flashcards: p.FLASHCARDS,
       labeling: p.LABELING,
       resources: p.RESOURCES,

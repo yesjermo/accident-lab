@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { BODY3D_PARTS } from './body3d';
 import { STRUCTURES } from './structures';
+import { ORGAN_STRUCTURES } from './organs';
 
 /** Read mesh names from the GLB's JSON chunk (no WebGL needed). */
 function glbMeshNames(path: string): string[] {
@@ -20,12 +21,9 @@ describe('3D body model', () => {
     expect(new Set(names)).toEqual(new Set(BODY3D_PARTS.map((p) => p.mesh)));
   });
 
-  it('links covered meshes to real structures and marks the rest planned', () => {
-    const ids = new Set(STRUCTURES.map((s) => s.id));
-    for (const p of BODY3D_PARTS) {
-      if (p.structureId) expect(ids.has(p.structureId), p.mesh).toBe(true);
-      else expect(p.planned, p.mesh).toBe(true);
-    }
+  it('links every mesh to a structure with lesson content', () => {
+    const ids = new Set([...STRUCTURES, ...ORGAN_STRUCTURES].map((s) => s.id));
+    for (const p of BODY3D_PARTS) expect(ids.has(p.structureId), p.mesh).toBe(true);
   });
 
   it('stays small enough for tablets', () => {

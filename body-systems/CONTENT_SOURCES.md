@@ -16,6 +16,38 @@ All checking was done on **2026-11-15**. Each claim was checked against the fetc
 | Khan Academy Medicine, *Bohr effect vs. Haldane effect* (YouTube) | Curated video | Title and channel confirmed via oEmbed | Linked, not embedded |
 | Ninja Nerd, *Oxygen-Hemoglobin Dissociation Curve* (YouTube) | Curated video | Title and channel confirmed via oEmbed | Linked, not embedded |
 
+## Organ panels and 3D tour (added 2026-11-15)
+
+The organ content (`organs.ts`, `tourLesson.ts`, 4 glossary terms) was checked against the fetched text of these OpenStax A&P 2e sections:
+
+- **Skin:** 5.1, 5.3
+- **Bones:** 6.1, 7.1
+- **Brain:** 13.2
+- **Blood:** 18.2, 18.3
+- **Circulation:** 20.5
+- **Respiration:** 22.3, 22.5
+- **Digestive tract:** 23.3, 23.4, 23.5, 23.6
+- **Urinary tract:** 25.2, 25.3
+- **Acid–base:** 26.4, 26.5
+
+Every section URL resolved and its title matched.
+
+**Corrections from that check:**
+- **Removed:** the "alkaline tide" statement, which is not in the source.
+- **Removed:** cerebrospinal fluid as the site central chemoreceptors sample. The source says "in the brain and brainstem".
+- **Removed:** "neurons rely heavily on aerobic metabolism", which is unverified.
+- **Removed:** the liver "stores glycogen", which isn't stated in the cited section.
+- **Fixed:** nephron count is about 1.3 million per kidney.
+- **Fixed:** red-cell lifespan is "up to about 120 days".
+- **Fixed:** the kidneys "conserve or generate" bicarbonate.
+- **Fixed:** only the lower esophageal sphincter prevents reflux.
+- **Fixed:** the 206-bones figure is now cited to 7.1.
+- **Fixed:** skin layers are now cited to 5.1.
+- **Fixed:** renal compensation is now cited to 26.5.
+- **Fixed:** the temperature effect on O₂ affinity is now cited to 22.5.
+
+A few distractor explanations state general facts with no source text either way. They were reworded to stay within what the sources say.
+
 ## Corrections made during checking
 
 - Atmospheric PO₂ uses OpenStax's **158.8 mmHg**, not the rounded 160.

@@ -40,6 +40,8 @@ function lookByRole(p: Body3DPart): { color: string; opacity: number } {
       return { color: cssVar('--muscle-3d', '#a8433f'), opacity: 1 };
     case 'organ':
       return { color: cssVar('--organ-3d', '#e8c9b0'), opacity: 1 };
+    case 'viscera':
+      return { color: cssVar('--viscera-3d', '#c9a27e'), opacity: 0.85 };
     default:
       return { color: cssVar('--context-3d', '#b9b2a6'), opacity: 0.55 };
   }
@@ -47,10 +49,13 @@ function lookByRole(p: Body3DPart): { color: string; opacity: number } {
 
 export interface Body3DProps {
   selected: string | null;
+  /** Meshes to emphasise when nothing is selected (e.g. the organs of a lesson step). */
+  highlight?: string[];
   onSelect: (mesh: string) => void;
   showSkin: boolean;
   showSkeleton: boolean;
-  showPlanned: boolean;
+  /** Show organs outside the oxygen journey's core (gut, kidneys, brain…). */
+  showOther: boolean;
   /** Increment to reset the camera. */
   resetKey: number;
 }
@@ -60,13 +65,15 @@ export interface Body3DProps {
  * click an organ to select it. The organ list next to it is the keyboard
  * and screen-reader alternative; this canvas is aria-hidden.
  */
-export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned, resetKey }: Body3DProps) {
+export function Body3D({ selected, highlight = [], onSelect, showSkin, showSkeleton, showOther, resetKey }: Body3DProps) {
+  const emphasis = selected ? [selected] : highlight;
+  const emphasisKey = emphasis.join('|');
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<{
     meshes: Map<string, THREE.Mesh>;
     render: () => void;
     reset: () => void;
-    focus: (mesh: THREE.Mesh) => void;
+    focus: (meshes: THREE.Mesh[]) => void;
   } | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -107,8 +114,9 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
     // Fly the camera to a mesh, keeping the current viewing direction.
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let flight = 0;
-    const focus = (mesh: THREE.Mesh) => {
-      const box = new THREE.Box3().setFromObject(mesh);
+    const focus = (targets: THREE.Mesh[]) => {
+      const box = new THREE.Box3();
+      targets.forEach((t) => box.expandByObject(t));
       const size = box.getSize(new THREE.Vector3()).length();
       const target = box.getCenter(new THREE.Vector3());
       const dir = camera.position.clone().sub(controls.target).normalize();
@@ -255,20 +263,24 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
       const part = partByMesh(name)!;
       const mat = mesh.material as THREE.MeshStandardMaterial;
       const base = look(part);
-      mesh.visible = part.layer === 'skin' ? showSkin : part.layer === 'skeleton' ? showSkeleton : !part.planned || showPlanned;
-      const isSel = name === selected;
+      const emphasised = emphasis.includes(name);
+      mesh.visible =
+        emphasised ||
+        (part.layer === 'skin' ? showSkin : part.layer === 'skeleton' ? showSkeleton : part.group === 'core' || showOther);
+      const isSel = emphasised;
       const isHover = name === hover;
       mat.emissive.copy(isSel ? accent : isHover ? new THREE.Color(0x444444) : new THREE.Color(0x000000));
       mat.emissiveIntensity = isSel ? 0.55 : 0.4;
       // With a selection, fade the other organs so the selected one stands out.
-      const fade = selected && !isSel && part.layer === 'organ';
+      const fade = emphasis.length > 0 && !isSel && part.layer === 'organ';
       mat.opacity = fade ? Math.min(base.opacity, 0.28) : base.opacity;
       mat.transparent = mat.opacity < 1;
       mat.depthWrite = mat.opacity >= 0.5;
       mat.needsUpdate = true;
     });
     a.render();
-  }, [selected, hover, showSkin, showSkeleton, showPlanned, state]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emphasisKey, hover, showSkin, showSkeleton, showOther, state]);
 
   useEffect(() => {
     if (resetKey > 0) api.current?.reset();
@@ -276,9 +288,12 @@ export function Body3D({ selected, onSelect, showSkin, showSkeleton, showPlanned
 
   // Bring the selected organ into view (from a click or from the organ list).
   useEffect(() => {
-    const m = selected ? api.current?.meshes.get(selected) : undefined;
-    if (m) api.current!.focus(m);
-  }, [selected, state]);
+    const a = api.current;
+    if (!a) return;
+    const ms = emphasis.map((n) => a.meshes.get(n)).filter((m): m is THREE.Mesh => !!m);
+    if (ms.length) a.focus(ms);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emphasisKey, state]);
 
   return (
     <div className="body3d">

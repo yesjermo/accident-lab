@@ -8,6 +8,7 @@ import { App } from './App';
 import { LocalStorageStudyRepository, MemoryStudyRepository } from './study/persistence';
 import { OXYGEN_JOURNEY } from './content/lesson';
 import { QUESTIONS } from './content/questions';
+import { TOUR_QUESTIONS } from './content/tourLesson';
 import { scoreQuiz, gradeLabeling } from './study/grading';
 
 // Recharts' ResponsiveContainer needs ResizeObserver.
@@ -85,7 +86,7 @@ describe('acceptance: complete the oxygen journey', () => {
       const last = i === OXYGEN_JOURNEY.steps.length - 1;
       await user.click(screen.getByRole('button', { name: last ? 'Complete the journey' : /Mark step done/ }));
     }
-    expect(await screen.findByRole('heading', { name: 'Journey completed' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Lesson completed' })).toBeInTheDocument();
     expect(screen.getByText(/0 of 7/)).toBeInTheDocument(); // demonstrated objectives: none yet
   });
 
@@ -118,7 +119,7 @@ describe('quiz scoring', () => {
     render(<App studyRepo={new MemoryStudyRepository()} />);
     const items = await screen.findAllByRole('listitem');
     const forms = items.map((li) => li.querySelector('form')).filter(Boolean) as HTMLElement[];
-    expect(forms).toHaveLength(QUESTIONS.length);
+    expect(forms).toHaveLength(QUESTIONS.length + TOUR_QUESTIONS.length);
     await answer(user, forms[0], /falls below atmospheric/); // q-boyle correct
     await answer(user, forms[1], 'Trachea'); // q-conducting wrong
     expect(within(forms[1]).getByText(/conducting zone: it carries/)).toBeInTheDocument();
@@ -206,7 +207,7 @@ describe('states', () => {
   });
 
   it('shows planned systems as unavailable, not broken', async () => {
-    go('#/system/renal');
+    go('#/system/endocrine');
     render(<App studyRepo={new MemoryStudyRepository()} />);
     expect(await screen.findByText('Planned', { selector: 'p' })).toBeInTheDocument();
   });
@@ -275,7 +276,7 @@ describe('regressions from code review', () => {
 });
 
 describe('3D body view', () => {
-  it('falls back to the organ list without WebGL, and the list opens organs and planned parts', async () => {
+  it("falls back to the organ list without WebGL, and the list opens every organ's lesson", async () => {
     const user = userEvent.setup();
     go('#/explore/3d');
     render(<App studyRepo={new MemoryStudyRepository()} />);
@@ -285,8 +286,58 @@ describe('3D body view', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Heart' })).toBeInTheDocument();
     expect(chip()).toHaveAttribute('aria-pressed', 'true');
     await user.click(screen.getByRole('button', { name: 'Liver' }));
-    expect(await screen.findByRole('heading', { name: 'Liver' })).toBeInTheDocument();
-    expect(screen.getByText(/Lessons for this part aren't written yet/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: 'Liver' })).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Chemistry' }));
+    expect(screen.getByText(/bilirubin/)).toBeInTheDocument();
     expect(screen.getByText(/BodyParts3D/)).toBeInTheDocument();
+  });
+});
+
+describe('3D organ tour lesson', () => {
+  it('walks all steps with 3D views and completes, without counting as demonstrated', async () => {
+    const user = userEvent.setup();
+    go('#/lesson/organ-tour');
+    render(<App studyRepo={new MemoryStudyRepository()} />);
+    expect(await screen.findByRole('heading', { level: 1, name: /Beyond the Lungs/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Start the journey' }));
+    const { ORGAN_TOUR } = await import('./content/tourLesson');
+    for (let i = 0; i < ORGAN_TOUR.steps.length; i++) {
+      const step = ORGAN_TOUR.steps[i];
+      expect(await screen.findByRole('heading', { level: 1, name: step.title })).toBeInTheDocument();
+      // jsdom has no WebGL, so the 3D stage shows its fallback
+      expect(await screen.findByText('3D needs WebGL')).toBeInTheDocument();
+      const last = i === ORGAN_TOUR.steps.length - 1;
+      await user.click(screen.getByRole('button', { name: last ? 'Complete the journey' : /Mark step done/ }));
+    }
+    expect(await screen.findByRole('heading', { name: 'Lesson completed' })).toBeInTheDocument();
+    expect(screen.getByText(/0 of 5/)).toBeInTheDocument();
+  });
+});
+
+describe('Medical Student toolbar', () => {
+  it('appears only at Medical Student level and its menus work with the keyboard', async () => {
+    const user = userEvent.setup();
+    go('#/explore/body');
+    render(<App studyRepo={new MemoryStudyRepository()} />);
+    await screen.findByRole('button', { name: 'Medical student' });
+    expect(screen.queryByRole('navigation', { name: 'Medical student tools' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Medical student' }));
+    const bar = screen.getByRole('navigation', { name: 'Medical student tools' });
+    const eqBtn = within(bar).getByRole('button', { name: /Equations/ });
+    expect(eqBtn).toHaveAttribute('aria-expanded', 'false');
+    eqBtn.focus();
+    await user.keyboard('{Enter}');
+    expect(eqBtn).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(eqBtn).toHaveAttribute('aria-expanded', 'false');
+    expect(eqBtn).toHaveFocus();
+    await user.click(eqBtn);
+    await user.click(within(bar).getByRole('link', { name: /Equation sheet/ }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Equation sheet' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Limits of this model/).length).toBeGreaterThan(5);
+    await user.click(within(bar).getByRole('button', { name: /Clinical connections/ }));
+    await user.click(within(bar).getByRole('link', { name: /All clinical connections/ }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Clinical connections' })).toBeInTheDocument();
+    expect(screen.getByText(/200–250 times/)).toBeInTheDocument();
   });
 });

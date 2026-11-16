@@ -30,8 +30,10 @@ function useTargetLink() {
     }
     if (t.kind === 'concept') return { label: ix.concepts.get(t.id)?.name ?? t.id, to: `/concept/${t.id}` };
     if (t.kind === 'lesson-step') {
-      const st = bundle.lessons[0].steps.find((s) => s.id === t.id);
-      return { label: st ? `Journey: ${st.title}` : t.id, to: `/journey/${t.id}` };
+      const lesson = bundle.lessons.find((l) => l.steps.some((s) => s.id === t.id));
+      const st = lesson?.steps.find((s) => s.id === t.id);
+      const base = !lesson || lesson.id === 'oxygen-journey' ? '/journey' : `/lesson/${lesson.id}`;
+      return { label: st && lesson ? `${lesson.title}: ${st.title}` : t.id, to: `${base}/${t.id}` };
     }
     if (t.kind === 'simulation') return { label: 'Dissociation-curve experiment', to: '/experiment' };
     return { label: t.id, to: '/' };
@@ -42,8 +44,6 @@ export function MyStudyPage() {
   const { bundle } = useContent();
   const { data, dispatch, resetAll } = useStudy();
   const link = useTargetLink();
-  const lesson = bundle.lessons[0];
-  const p = lessonProgress(lesson, data);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pendingImport, setPendingImport] = useState<ReturnType<typeof parseImport> | null>(null);
@@ -65,10 +65,16 @@ export function MyStudyPage() {
 
       <section>
         <h2>Progress by learning objective</h2>
+        <p className="muted">Opening or completing a lesson never counts as demonstrated understanding.</p>
+        {bundle.lessons.map((lesson) => {
+          const p = lessonProgress(lesson, data);
+          return (
+        <div key={lesson.id} className="lesson-progress">
+        <h3>{lesson.title}</h3>
         <p className="muted">
           <strong>Lesson:</strong> {p.stepsCompleted}/{p.stepsTotal} steps completed
           {p.lessonCompleted ? ' (lesson completed)' : ''}. <strong>Understanding:</strong> {p.demonstrated}/{p.objectives.length}{' '}
-          objectives demonstrated. Opening or completing a lesson never counts as demonstrated understanding.
+          objectives demonstrated.
         </p>
         <table className="progress-table">
           <thead>
@@ -95,6 +101,9 @@ export function MyStudyPage() {
             ))}
           </tbody>
         </table>
+        </div>
+          );
+        })}
         <p className="muted small">
           Demonstrated = your latest answers to at least two of the objective's questions (or all, if it has fewer) are correct, and
           none of your latest answers is wrong. Labeling: {data.labeling.length} attempt{data.labeling.length === 1 ? '' : 's'}.

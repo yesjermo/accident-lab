@@ -10,24 +10,30 @@ import { gradeLabeling, scoreQuiz, stableShuffle, type QuizAnswer } from '../stu
 
 export function QuizPage() {
   const { bundle } = useContent();
-  const lesson = bundle.lessons[0];
   const [objective, setObjective] = useState<string>('all');
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [session, setSession] = useState(0);
   const qs = useMemo(
-    () => bundle.questions.filter((q) => objective === 'all' || q.objectiveIds.includes(objective)),
-    [bundle.questions, objective],
+    () => {
+      if (objective === 'all') return bundle.questions;
+      const lesson = bundle.lessons.find((l) => l.id === objective);
+      const ids = lesson
+        ? new Set(lesson.objectives.flatMap((o) => o.questionIds))
+        : new Set(bundle.lessons.flatMap((l) => l.objectives).find((o) => o.id === objective)?.questionIds ?? []);
+      return bundle.questions.filter((q) => ids.has(q.id));
+    },
+    [bundle.questions, bundle.lessons, objective],
   );
   const score = scoreQuiz(answers);
 
   return (
     <article className="page narrow">
       <p className="eyebrow">Practise</p>
-      <h1>Quiz: the oxygen journey</h1>
+      <h1>Quiz</h1>
       <p className="lede">Each answer is explained, right or wrong. Missed questions go to your review queue.</p>
       <div className="row wrap quiz-head">
         <label htmlFor="obj" className="field-label">
-          Objective
+          Lesson or objective
         </label>
         <select
           id="obj"
@@ -39,10 +45,15 @@ export function QuizPage() {
           }}
         >
           <option value="all">All objectives ({bundle.questions.length} questions)</option>
-          {lesson.objectives.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.text}
-            </option>
+          {bundle.lessons.map((l) => (
+            <optgroup key={l.id} label={l.title}>
+              <option value={l.id}>All of {l.title}</option>
+              {l.objectives.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.text}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>

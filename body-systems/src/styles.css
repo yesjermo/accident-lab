@@ -462,9 +462,41 @@ textarea, input[type='url'], input:not([type]), input[type='text'] { width: 100%
 :root { --skin-3d: #c9a88e; --bone-3d: #e7e0cf; --vessel-rich-3d: #c0393f; --vessel-poor-3d: #3d6db3; --muscle-3d: #a8433f; --organ-3d: #ead2bd; --context-3d: #b6ad9f; }
 .stage3d .toggles { margin-top: 10px; }
 .body3d { position: relative; margin: 10px 0; border: 1px solid var(--rule); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 40%, var(--surface), var(--paper-2)); overflow: hidden; }
-.body3d-canvas { width: 100%; height: min(68vh, 640px); touch-action: none; }
+.body3d-canvas { width: 100%; height: var(--body3d-height, min(68vh, 640px)); touch-action: none; }
 .body3d-canvas canvas { display: block; }
 .body3d-overlay { position: absolute; inset: 0; display: grid; place-items: center; }
 .body3d-hover { position: absolute; left: 12px; bottom: 8px; margin: 0; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--rule); font: 600 13px var(--sans); }
 .chip-planned { border-style: dashed; color: var(--muted); }
 .attribution { margin-top: 12px; }
+:root { --viscera-3d: #c9a27e; }
+
+/* ------------------------------------------------- medical student toolbar */
+.med-toolbar {
+  position: sticky; top: 61px; z-index: 4; display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 4px 20px; background: var(--paper-2); border-bottom: 1px solid var(--rule); font: 14px var(--sans);
+}
+.med-toolbar-label { margin-right: 8px; color: var(--muted); font-weight: 600; }
+.hover-menu { position: relative; }
+.hover-menu-btn, .med-toolbar-link {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px; border: 0; border-radius: 8px;
+  background: none; color: var(--ink); font: 500 14px var(--sans); cursor: pointer; text-decoration: none;
+}
+.hover-menu-btn:hover, .hover-menu.is-open .hover-menu-btn, .med-toolbar-link:hover { background: var(--surface); }
+.med-toolbar-link.is-active { box-shadow: inset 0 -2px 0 var(--accent); }
+.caret { font-size: 11px; color: var(--muted); }
+.hover-menu-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 7; min-width: 260px; max-width: min(380px, 90vw); max-height: 60vh; overflow-y: auto;
+  padding: 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: 0 12px 32px #0003;
+}
+.hover-menu-panel ul { list-style: none; margin: 0; padding: 0; }
+.hover-menu-panel a { display: block; padding: 8px 10px; border-radius: 6px; color: var(--ink); text-decoration: none; min-height: 36px; }
+.hover-menu-panel a:hover, .hover-menu-panel a:focus-visible { background: var(--paper-2); }
+.hover-menu-panel .menu-footer { margin-top: 6px; border-top: 1px solid var(--rule); color: var(--accent); font-weight: 600; border-radius: 0 0 6px 6px; }
+.eq-entry { scroll-margin-top: 120px; }
+.clinical-entry { border-bottom: 1px solid var(--rule); padding-bottom: 12px; }
+@media (max-width: 520px) {
+  .med-toolbar { padding: 4px 8px; }
+  .med-toolbar-label { display: none; }
+  .hover-menu-panel { position: fixed; left: 8px; right: 8px; top: auto; max-width: none; }
+}
+@media (max-width: 920px) { .med-toolbar { position: static; } }

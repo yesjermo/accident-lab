@@ -27,6 +27,8 @@ The build is a static site, so it can be served from any sub-path. The repo's Pa
 | Acceptance criterion | Where |
 |---|---|
 | Explore in 3D | **3D body** (`#/explore/3d`): a transparent full body built from BodyParts3D anatomical meshes, with lung lobes and thigh muscles from Z-Anatomy. Selecting an organ flies the camera to it. Rotate, zoom, and click an organ to open its panel; the skin and skeleton layers can be toggled. An organ list gives keyboard access, and the 2D diagrams are the fallback without WebGL |
+| Tour the other organs in 3D | **Beyond the Lungs** (`#/lesson/organ-tour`): a 6-step 3D lesson. It covers how the brain drives breathing, how the kidneys release EPO, how red marrow makes red cells, the gut-to-liver route and heme recycling, the two speeds of pH control, and how skin regulates temperature. It has 5 objectives and 9 new questions. Every organ in the 3D body (brain, esophagus, stomach, intestines, liver, pancreas, kidneys, bladder, skeleton, skin) has a five-lens panel |
+| Medical Student tools | At Medical Student level a toolbar appears under the header. Its menus (Clinical connections, Equations, Mechanisms, Review) open on hover, tap or keyboard. There is also an equation sheet (`#/equations`) and a clinical-connections page (`#/clinical`) |
 | Select the heart or lungs | **Explore the body** (`#/explore/body`). Click or Tab+Enter on the drawing, or use the structure list under it |
 | Complete the oxygen journey | **Follow an Oxygen Molecule** (`#/journey`): 7 steps, synchronised diagram, objectives, prerequisites, glossary, a knowledge check per step |
 | Go from anatomy to biology and chemistry | Detail panel tabs (Anatomy / Physiology / Biology / Chemistry / Clinical / Study). "Why does this happen?" links open layered mechanism pages with a **Back to …** link |
@@ -48,6 +50,9 @@ src/
     structures.ts        28 structures × 5 lenses, at two reading levels
     concepts.ts          8 mechanisms with "Why" layers, equations, concept-map edges, glossary
     lesson.ts            The oxygen journey (7 steps, 7 objectives)
+    organs.ts            Brain, digestive, urinary, skeletal and skin structures (3D-only views)
+    tourLesson.ts        "Beyond the Lungs" 3D organ tour (6 steps, 5 objectives, 9 questions)
+    medical.ts           Derived lists for the Medical Student toolbar (clinical items, equations)
     questions.ts         19 MCQs; every choice has an explanation
     practice.ts          Flashcards, labeling exercises, curated resources, simulation spec
     repository.ts        ContentRepository interface + StaticContentRepository
